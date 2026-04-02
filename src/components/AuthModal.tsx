@@ -8,7 +8,6 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
@@ -38,7 +37,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         
         setMessage('התחברת בהצלחה!');
         setTimeout(() => onClose(), 1500);
-      } else if (isLogin) {
+      } else {
         // Regular Login
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -49,22 +48,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         
         setMessage('התחברת בהצלחה!');
         setTimeout(() => onClose(), 1500);
-      } else {
-        // Sign Up
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: window.location.origin,
-          }
-        });
-        
-        if (signUpError) throw signUpError;
-        
-        setMessage('נשלח מייל אימות. אנא בדוק את תיבת הדואר שלך ולחץ על הקישור.');
       }
     } catch (err: any) {
-      setError(err.message || 'אירעה שגיאה. ודא שהגדרת את Supabase ב-.env');
+      setError(err.message || 'שגיאה בהתחברות. אנא ודא שהפרטים נכונים ושיש לך הרשאה למערכת.');
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +69,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       const { error: magicLinkError } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          shouldCreateUser: true, // Allows new users to sign up via magic link
+          shouldCreateUser: false, // Prevents new users from signing up via magic link
           emailRedirectTo: window.location.origin,
         }
       });
@@ -93,7 +79,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setMessage('קוד התחברות נשלח למייל שלך! הזן אותו למטה.');
       setShowOtpInput(true);
     } catch (err: any) {
-      setError(err.message || 'אירעה שגיאה בשליחת הקוד. ודא שהגדרת את Supabase ב-.env');
+      setError(err.message || 'שגיאה בשליחת הקוד. ודא שהמייל קיים במערכת.');
     } finally {
       setIsLoading(false);
     }
@@ -115,10 +101,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </div>
           
           <h2 className="text-2xl font-bold text-center text-white mb-2">
-            {showOtpInput ? 'הזן קוד אימות' : (isLogin ? 'התחברות למערכת' : 'הרשמה למערכת')}
+            {showOtpInput ? 'הזן קוד אימות' : 'התחברות למערכת'}
           </h2>
           <p className="text-center text-zinc-400 text-sm mb-8">
-            {showOtpInput ? 'הזן את הקוד שנשלח לכתובת המייל שלך' : (isLogin ? 'הזן את פרטיך כדי להמשיך' : 'צור חשבון חדש כדי לשמור את הפרויקטים שלך')}
+            {showOtpInput ? 'הזן את הקוד שנשלח לכתובת המייל שלך' : 'הזן את פרטיך כדי להתחבר (למורשים בלבד)'}
           </p>
 
           {error && (
@@ -197,7 +183,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               disabled={isLoading}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
             >
-              {isLoading ? 'טוען...' : (showOtpInput ? 'אמת קוד' : (isLogin ? 'התחבר' : 'הרשם'))}
+              {isLoading ? 'טוען...' : (showOtpInput ? 'אמת קוד' : 'התחבר')}
             </button>
           </form>
 
@@ -223,20 +209,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   שלח קוד התחברות למייל (ללא סיסמה)
                 </button>
               </div>
-
-              <p className="text-center text-zinc-500 text-sm mt-8">
-                {isLogin ? 'אין לך חשבון? ' : 'כבר יש לך חשבון? '}
-                <button 
-                  onClick={() => {
-                    setIsLogin(!isLogin);
-                    setError('');
-                    setMessage('');
-                  }}
-                  className="text-orange-500 hover:text-orange-400 font-medium"
-                >
-                  {isLogin ? 'הרשם עכשיו' : 'התחבר'}
-                </button>
-              </p>
             </>
           )}
         </div>
