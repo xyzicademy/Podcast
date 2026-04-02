@@ -1,0 +1,5 @@
+{
+  "name": "Podcast Studio Enhancer",
+  "description": "Enhance audio recordings to sound like a professional studio using advanced signal processing.",
+  "requestFramePermissions": ["microphone"]
+}
