@@ -11,13 +11,11 @@ import { AudioRecorder } from './components/AudioRecorder';
 import { AudioVisualizer } from './components/AudioVisualizer';
 import { MultiTrackTimeline } from './components/MultiTrackTimeline';
 import { Knob } from './components/Knob';
-import { Scissors, Trash2, FileAudio, Crop, Split, HelpCircle, RotateCcw, Edit2, SaveAll, User } from 'lucide-react';
+import { Scissors, Trash2, FileAudio, Crop, Split, HelpCircle, RotateCcw, Edit2, SaveAll } from 'lucide-react';
 import { UserGuide } from './components/UserGuide';
-import { AuthModal } from './components/AuthModal';
 
 function App() {
   const [showGuide, setShowGuide] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [showDeletePresetConfirm, setShowDeletePresetConfirm] = useState(false);
   const [presetModalMode, setPresetModalMode] = useState<'create' | 'edit'>('create');
@@ -279,15 +277,6 @@ function App() {
               <span className="hidden sm:inline">איפוס</span>
             </button>
             <div className="w-px h-4 bg-zinc-800 mx-2"></div>
-            <button 
-              onClick={() => setShowAuthModal(true)} 
-              className="flex items-center gap-2 hover:text-white transition-colors text-zinc-400"
-              title="התחברות / הרשמה"
-            >
-              <User className="w-4 h-4" />
-              <span className="hidden sm:inline">התחברות</span>
-            </button>
-            <div className="w-px h-4 bg-zinc-800 mx-2"></div>
             <span className="flex items-center gap-2">
               <Activity className="w-4 h-4" />
               עיבוד סאונד מתקדם
@@ -297,7 +286,6 @@ function App() {
       </header>
 
       <UserGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
 
       <main className="w-full px-4 py-8">
         
