@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Track, Channel, Marker } from '../hooks/useAudioProcessor';
-import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast } from 'lucide-react';
+import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast, Brush, Eraser, Layers } from 'lucide-react';
 import { TrackWaveform } from './TrackWaveform';
 
 interface MultiTrackTimelineProps {
@@ -518,7 +518,6 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
 
         <div className="flex gap-2">
             <button onClick={() => onAddMarker(currentTime)} className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400 flex items-center gap-1 text-xs" title="הוסף סמן במיקום הנוכחי"><MapPin className="w-3 h-3"/> סמן</button>
-            <button onClick={onAddChannel} className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400 flex items-center gap-1 text-xs"><Plus className="w-3 h-3"/> ערוץ חדש</button>
             
             {selectionStart !== null && selectionEnd !== null && Math.abs(selectionEnd - selectionStart) > 0.05 && selectedTrackId && (
               <>
@@ -553,14 +552,15 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                   className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400"
                   title="פצל רצועה נבחרת"
                 >
-                  <Split className="w-4 h-4"/>
+                  <Scissors className="w-4 h-4"/>
                 </button>
                 <button 
                   onClick={onAutoTrim}
-                  className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400"
+                  className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400 flex items-center"
                   title="הסר שקט אוטומטית"
                 >
-                  <Scissors className="w-4 h-4"/>
+                  <Eraser className="w-4 h-4" />
+                  <VolumeX className="w-3 h-3 -mr-1" />
                 </button>
               </>
             )}
@@ -569,8 +569,10 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
       
       <div className="flex border border-zinc-800 rounded overflow-hidden bg-zinc-950">
         {/* Channels Header */}
-        <div className="w-32 flex-shrink-0 border-r border-zinc-800 bg-zinc-900 z-10">
-            <div className="h-6 border-b border-zinc-800 bg-zinc-900/50"></div> {/* Ruler spacer */}
+        <div className="w-32 flex-shrink-0 border-r border-zinc-800 bg-zinc-900 z-10 flex flex-col">
+            <div className="h-6 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-center">
+              <button onClick={onAddChannel} className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold" title="ערוץ חדש"><Plus className="w-3 h-3"/><Layers className="w-4 h-4"/></button>
+            </div> {/* Ruler spacer */}
             {channels.map((channel, index) => (
                 <div key={channel.id} className="h-20 border-b border-zinc-800/50 flex flex-col justify-center px-2 relative group">
                     {editingChannelId === channel.id ? (

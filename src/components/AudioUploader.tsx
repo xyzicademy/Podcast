@@ -61,7 +61,7 @@ export const AudioUploader: React.FC<AudioUploaderProps> = ({ onFileSelect }) =>
       <div className="flex items-center gap-2">
         <UploadCloud className={`w-5 h-5 ${isDragging ? 'text-orange-500' : 'text-zinc-500'}`} />
         <p className="text-zinc-300 font-medium text-sm">
-          {isDragging ? 'שחרר את הקובץ כאן...' : 'לחץ או גרור קובץ אודיו'}
+          {isDragging ? 'שחרר את הקובץ כאן...' : 'העלאת קבצים'}
         </p>
       </div>
     </div>

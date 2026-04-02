@@ -11,7 +11,7 @@ import { AudioRecorder } from './components/AudioRecorder';
 import { AudioVisualizer } from './components/AudioVisualizer';
 import { MultiTrackTimeline } from './components/MultiTrackTimeline';
 import { Knob } from './components/Knob';
-import { Scissors, Trash2, FileAudio, Crop, Split, HelpCircle, RotateCcw, Edit2, SaveAll } from 'lucide-react';
+import { Scissors, Trash2, FileAudio, Crop, Split, HelpCircle, RotateCcw, Edit2, SaveAll, Brush, SlidersHorizontal } from 'lucide-react';
 import { UserGuide } from './components/UserGuide';
 
 function App() {
@@ -508,7 +508,10 @@ function App() {
                     <div className={`flex flex-col gap-2 flex-1 min-w-[200px] max-w-[400px] ${!selectedTrackId ? 'opacity-50 pointer-events-none' : ''}`}>
                       {/* Track Speed */}
                       <div className="flex items-center gap-3 bg-zinc-800/50 p-2 px-4 rounded-lg border border-zinc-700/50">
-                          <span className="text-xs font-bold text-zinc-500 whitespace-nowrap">מהירות רצועה:</span>
+                          <span className="text-xs font-bold text-zinc-500 whitespace-nowrap flex items-center gap-1">
+                            <FastForward className="w-3 h-3" />
+                            מהירות רצועה:
+                          </span>
                           <input 
                               type="range" 
                               min="0.5" 
@@ -547,7 +550,10 @@ function App() {
 
                       {/* Track Volume */}
                       <div className="flex items-center gap-3 bg-zinc-800/50 p-2 px-4 rounded-lg border border-zinc-700/50">
-                          <span className="text-xs font-bold text-zinc-500 whitespace-nowrap">עוצמת רצועה:</span>
+                          <span className="text-xs font-bold text-zinc-500 whitespace-nowrap flex items-center gap-1">
+                            <Volume2 className="w-3 h-3" />
+                            עוצמת רצועה:
+                          </span>
                           <input 
                               type="range" 
                               min="0" 
@@ -592,7 +598,7 @@ function App() {
               <div className={`bg-zinc-900 rounded-xl border border-zinc-800 p-4 shadow-lg transition-opacity duration-500 ${audioState.isReady ? 'opacity-100' : 'opacity-50 pointer-events-none grayscale'}`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                    <Settings className="w-4 h-4" />
+                    <Music className="w-4 h-4" />
                     בחר סגנון
                   </h2>
                   <button
@@ -664,7 +670,7 @@ function App() {
                     className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-2 transition-colors"
                   >
                     {showAdvanced ? 'הסתר הגדרות מתקדמות' : 'הצג הגדרות מתקדמות (דיוקים)'}
-                    <Settings className="w-3 h-3" />
+                    <SlidersHorizontal className="w-3 h-3" />
                   </button>
                 </div>
 
@@ -730,7 +736,10 @@ function App() {
                 
                 {/* Add Media Card */}
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-3 shadow-lg flex flex-col">
-                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-2">הוסף מדיה</h3>
+                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <Upload className="w-4 h-4" />
+                    הוסף מדיה
+                  </h3>
                   <div className="space-y-2 flex-1">
                     <AudioRecorder onSave={handleAddMedia} />
                     <div className="h-px w-full bg-zinc-800"></div>
@@ -740,7 +749,10 @@ function App() {
 
                 {/* Match Style Card */}
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-3 shadow-lg flex flex-col">
-                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-1">התאמת סגנון</h3>
+                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-1 flex items-center gap-2">
+                    <Brush className="w-4 h-4" />
+                    התאמת סגנון
+                  </h3>
                   <p className="text-xs text-zinc-500 mb-2 leading-tight">
                     החל את עוצמת הסאונד, העומק והחמימות מרצועה אחרת על הרצועה הנבחרת.
                   </p>
@@ -774,8 +786,9 @@ function App() {
                             }
                           }}
                           disabled={!selectedTrackId || tracks.length < 2 || audioState.isProcessing}
-                          className="bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-white px-4 py-2 rounded font-bold text-sm transition-colors"
+                          className="bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-white px-4 py-2 rounded font-bold text-sm transition-colors flex items-center justify-center gap-2"
                         >
+                          <Brush className="w-4 h-4" />
                           החל סגנון
                         </button>
                       </div>
@@ -785,7 +798,10 @@ function App() {
 
                 {/* Export Card */}
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-3 shadow-lg flex flex-col">
-                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-1">ייצוא פרויקט</h3>
+                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-1 flex items-center gap-2">
+                    <Download className="w-4 h-4" />
+                    ייצוא פרויקט
+                  </h3>
                   <p className="text-xs text-zinc-500 mb-2 leading-tight">
                     שמור את האודיו המעובד.
                   </p>
