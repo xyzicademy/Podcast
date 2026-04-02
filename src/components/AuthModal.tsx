@@ -54,6 +54,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: window.location.origin,
+          }
         });
         
         if (signUpError) throw signUpError;
@@ -81,6 +84,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         email,
         options: {
           shouldCreateUser: true, // Allows new users to sign up via magic link
+          emailRedirectTo: window.location.origin,
         }
       });
       
