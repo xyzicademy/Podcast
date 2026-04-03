@@ -104,10 +104,12 @@ function App() {
 
   const handleFileSelect = (file: File) => {
     loadTrack(file);
+    applyPreset('original');
   };
 
   const handleAddMedia = (file: File) => {
     addTrack(file, true);
+    applyPreset('original');
   };
 
   const handleExport = async () => {
@@ -506,6 +508,7 @@ function App() {
                     
                     {/* Left Side: Track Controls */}
                     <div className={`flex flex-col gap-2 flex-1 min-w-[200px] max-w-[400px] ${!selectedTrackId ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <h4 className="text-sm font-bold text-orange-400 mb-1 text-center">שליטה ברצועה נבחרת</h4>
                       {/* Track Speed */}
                       <div className="flex items-center gap-3 bg-zinc-800/50 p-2 px-4 rounded-lg border border-zinc-700/50">
                           <span className="text-xs font-bold text-zinc-500 whitespace-nowrap flex items-center gap-1">
@@ -737,7 +740,7 @@ function App() {
                 {/* Add Media Card */}
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-3 shadow-lg flex flex-col">
                   <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <Upload className="w-4 h-4" />
+                    <div className="bg-zinc-800 p-1.5 rounded-lg shrink-0"><Upload className="w-4 h-4 text-blue-400" /></div>
                     הוסף מדיה
                   </h3>
                   <div className="space-y-2 flex-1">
@@ -750,7 +753,7 @@ function App() {
                 {/* Match Style Card */}
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-3 shadow-lg flex flex-col">
                   <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-1 flex items-center gap-2">
-                    <Brush className="w-4 h-4" />
+                    <div className="bg-zinc-800 p-1.5 rounded-lg shrink-0"><Brush className="w-4 h-4 text-purple-400" /></div>
                     התאמת סגנון
                   </h3>
                   <p className="text-xs text-zinc-500 mb-2 leading-tight">
@@ -799,7 +802,7 @@ function App() {
                 {/* Export Card */}
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-3 shadow-lg flex flex-col">
                   <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-1 flex items-center gap-2">
-                    <Download className="w-4 h-4" />
+                    <div className="bg-zinc-800 p-1.5 rounded-lg shrink-0"><Download className="w-4 h-4 text-green-400" /></div>
                     ייצוא פרויקט
                   </h3>
                   <p className="text-xs text-zinc-500 mb-2 leading-tight">
