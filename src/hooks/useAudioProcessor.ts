@@ -329,7 +329,7 @@ export function useAudioProcessor() {
       setTracks(history[newIndex]);
     }
   };
-  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [selectedTrackIds, setSelectedTrackIds] = useState<string[]>([]);
   const [settings, setSettings] = useState<AudioSettings>(defaultSettings);
   const [currentPreset, setCurrentPreset] = useState<PresetName>('natural');
 
@@ -668,7 +668,7 @@ export function useAudioProcessor() {
 
       setTracks([newTrack]);
       saveState([newTrack]);
-      setSelectedTrackId(newTrack.id);
+      setSelectedTrackIds([newTrack.id]);
       
       // Update duration
       setAudioState(s => ({ ...s, duration: newTrack.buffer.duration, isReady: true, currentTime: 0 }));
@@ -727,7 +727,7 @@ export function useAudioProcessor() {
       setAudioState(s => ({ ...s, duration: maxDuration, isReady: true }));
       saveState(newTracks);
       
-      setSelectedTrackId(newTrack.id);
+      setSelectedTrackIds([newTrack.id]);
       setAudioState(prev => ({ ...prev, isProcessing: false }));
       
     } catch (error) {
@@ -790,45 +790,49 @@ export function useAudioProcessor() {
   };
 
   const cut = (start: number, end: number) => {
-    if (!selectedTrackId || !audioContextRef.current) return;
+    if (selectedTrackIds.length === 0 || !audioContextRef.current) return;
     
-    const trackIndex = tracks.findIndex(t => t.id === selectedTrackId);
-    if (trackIndex === -1 || tracks[trackIndex].locked) return;
+    let newTracks = [...tracks];
     
-    const track = tracks[trackIndex];
-    const buffer = track.buffer;
-    const rate = buffer.sampleRate;
-    const startFrame = Math.floor(start * rate);
-    const endFrame = Math.floor(end * rate);
-    const totalFrames = buffer.length;
-    const newLength = totalFrames - (endFrame - startFrame);
+    selectedTrackIds.forEach(id => {
+      const trackIndex = newTracks.findIndex(t => t.id === id);
+      if (trackIndex === -1 || newTracks[trackIndex].locked) return;
+      
+      const track = newTracks[trackIndex];
+      const buffer = track.buffer;
+      const rate = buffer.sampleRate;
+      const startFrame = Math.floor(start * rate);
+      const endFrame = Math.floor(end * rate);
+      const totalFrames = buffer.length;
+      const newLength = totalFrames - (endFrame - startFrame);
+      
+      if (newLength <= 0) return;
+
+      const newBuffer = audioContextRef.current!.createBuffer(
+        buffer.numberOfChannels,
+        newLength,
+        rate
+      );
+
+      for (let i = 0; i < buffer.numberOfChannels; i++) {
+        const channelData = buffer.getChannelData(i);
+        const newChannelData = newBuffer.getChannelData(i);
+        newChannelData.set(channelData.subarray(0, startFrame), 0);
+        newChannelData.set(channelData.subarray(endFrame), startFrame);
+      }
+
+      newTracks[trackIndex] = { 
+        ...track, 
+        buffer: newBuffer,
+        sourceStart: 0,
+        duration: newLength / rate,
+        originalBuffer: undefined,
+        originalSourceStart: undefined,
+        originalDuration: undefined,
+        stretchRate: undefined
+      };
+    });
     
-    if (newLength <= 0) return;
-
-    const newBuffer = audioContextRef.current.createBuffer(
-      buffer.numberOfChannels,
-      newLength,
-      rate
-    );
-
-    for (let i = 0; i < buffer.numberOfChannels; i++) {
-      const channelData = buffer.getChannelData(i);
-      const newChannelData = newBuffer.getChannelData(i);
-      newChannelData.set(channelData.subarray(0, startFrame), 0);
-      newChannelData.set(channelData.subarray(endFrame), startFrame);
-    }
-
-    const newTracks = [...tracks];
-    newTracks[trackIndex] = { 
-      ...track, 
-      buffer: newBuffer,
-      sourceStart: 0,
-      duration: newLength / rate,
-      originalBuffer: undefined,
-      originalSourceStart: undefined,
-      originalDuration: undefined,
-      stretchRate: undefined
-    };
     saveState(newTracks);
     
     // Update duration
@@ -840,43 +844,47 @@ export function useAudioProcessor() {
   };
 
   const trim = (start: number, end: number) => {
-    if (!selectedTrackId || !audioContextRef.current) return;
+    if (selectedTrackIds.length === 0 || !audioContextRef.current) return;
     
-    const trackIndex = tracks.findIndex(t => t.id === selectedTrackId);
-    if (trackIndex === -1 || tracks[trackIndex].locked) return;
+    let newTracks = [...tracks];
     
-    const track = tracks[trackIndex];
-    const buffer = track.buffer;
-    const rate = buffer.sampleRate;
-    const startFrame = Math.floor(start * rate);
-    const endFrame = Math.floor(end * rate);
-    const newLength = endFrame - startFrame;
+    selectedTrackIds.forEach(id => {
+      const trackIndex = newTracks.findIndex(t => t.id === id);
+      if (trackIndex === -1 || newTracks[trackIndex].locked) return;
+      
+      const track = newTracks[trackIndex];
+      const buffer = track.buffer;
+      const rate = buffer.sampleRate;
+      const startFrame = Math.floor(start * rate);
+      const endFrame = Math.floor(end * rate);
+      const newLength = endFrame - startFrame;
+      
+      if (newLength <= 0) return;
+
+      const newBuffer = audioContextRef.current!.createBuffer(
+        buffer.numberOfChannels,
+        newLength,
+        rate
+      );
+
+      for (let i = 0; i < buffer.numberOfChannels; i++) {
+        const channelData = buffer.getChannelData(i);
+        const newChannelData = newBuffer.getChannelData(i);
+        newChannelData.set(channelData.subarray(startFrame, endFrame), 0);
+      }
+
+      newTracks[trackIndex] = { 
+        ...track, 
+        buffer: newBuffer,
+        sourceStart: 0,
+        duration: newLength / rate,
+        originalBuffer: undefined,
+        originalSourceStart: undefined,
+        originalDuration: undefined,
+        stretchRate: undefined
+      };
+    });
     
-    if (newLength <= 0) return;
-
-    const newBuffer = audioContextRef.current.createBuffer(
-      buffer.numberOfChannels,
-      newLength,
-      rate
-    );
-
-    for (let i = 0; i < buffer.numberOfChannels; i++) {
-      const channelData = buffer.getChannelData(i);
-      const newChannelData = newBuffer.getChannelData(i);
-      newChannelData.set(channelData.subarray(startFrame, endFrame), 0);
-    }
-
-    const newTracks = [...tracks];
-    newTracks[trackIndex] = { 
-      ...track, 
-      buffer: newBuffer,
-      sourceStart: 0,
-      duration: newLength / rate,
-      originalBuffer: undefined,
-      originalSourceStart: undefined,
-      originalDuration: undefined,
-      stretchRate: undefined
-    };
     saveState(newTracks);
     
     // Update duration
@@ -888,61 +896,64 @@ export function useAudioProcessor() {
   };
 
   const autoTrim = () => {
-    if (!selectedTrackId || !audioContextRef.current) return;
+    if (selectedTrackIds.length === 0 || !audioContextRef.current) return;
     
-    const trackIndex = tracks.findIndex(t => t.id === selectedTrackId);
-    if (trackIndex === -1 || tracks[trackIndex].locked) return;
+    let newTracks = [...tracks];
     
-    const track = tracks[trackIndex];
-    const buffer = track.buffer;
-    const rate = buffer.sampleRate;
-    
-    const startFrame = Math.floor(track.sourceStart * rate);
-    const endFrame = Math.floor((track.sourceStart + track.duration) * rate);
-    
-    let firstLoudFrame = endFrame;
-    let lastLoudFrame = startFrame;
-    const threshold = 0.015; // Silence threshold
-    
-    for (let c = 0; c < buffer.numberOfChannels; c++) {
-      const data = buffer.getChannelData(c);
+    selectedTrackIds.forEach(id => {
+      const trackIndex = newTracks.findIndex(t => t.id === id);
+      if (trackIndex === -1 || newTracks[trackIndex].locked) return;
       
-      // Find first loud frame
-      for (let i = startFrame; i < endFrame; i++) {
-        if (Math.abs(data[i]) > threshold) {
-          if (i < firstLoudFrame) firstLoudFrame = i;
-          break;
+      const track = newTracks[trackIndex];
+      const buffer = track.buffer;
+      const rate = buffer.sampleRate;
+      
+      const startFrame = Math.floor(track.sourceStart * rate);
+      const endFrame = Math.floor((track.sourceStart + track.duration) * rate);
+      
+      let firstLoudFrame = endFrame;
+      let lastLoudFrame = startFrame;
+      const threshold = 0.015; // Silence threshold
+      
+      for (let c = 0; c < buffer.numberOfChannels; c++) {
+        const data = buffer.getChannelData(c);
+        
+        // Find first loud frame
+        for (let i = startFrame; i < endFrame; i++) {
+          if (Math.abs(data[i]) > threshold) {
+            if (i < firstLoudFrame) firstLoudFrame = i;
+            break;
+          }
+        }
+        
+        // Find last loud frame
+        for (let i = endFrame - 1; i >= startFrame; i--) {
+          if (Math.abs(data[i]) > threshold) {
+            if (i > lastLoudFrame) lastLoudFrame = i;
+            break;
+          }
         }
       }
       
-      // Find last loud frame
-      for (let i = endFrame - 1; i >= startFrame; i--) {
-        if (Math.abs(data[i]) > threshold) {
-          if (i > lastLoudFrame) lastLoudFrame = i;
-          break;
-        }
+      if (firstLoudFrame >= lastLoudFrame) {
+        return; // Track is entirely silence
       }
-    }
-    
-    if (firstLoudFrame >= lastLoudFrame) {
-      return; // Track is entirely silence
-    }
-    
-    // Add 50ms padding to avoid cutting off attacks and tails too abruptly
-    const paddingFrames = Math.floor(0.05 * rate);
-    firstLoudFrame = Math.max(startFrame, firstLoudFrame - paddingFrames);
-    lastLoudFrame = Math.min(endFrame, lastLoudFrame + paddingFrames);
-    
-    const startOffsetSeconds = (firstLoudFrame - startFrame) / rate;
-    const newDuration = (lastLoudFrame - firstLoudFrame) / rate;
-    
-    const newTracks = [...tracks];
-    newTracks[trackIndex] = {
-      ...track,
-      startTime: track.startTime + startOffsetSeconds,
-      sourceStart: track.sourceStart + startOffsetSeconds,
-      duration: newDuration
-    };
+      
+      // Add 50ms padding to avoid cutting off attacks and tails too abruptly
+      const paddingFrames = Math.floor(0.05 * rate);
+      firstLoudFrame = Math.max(startFrame, firstLoudFrame - paddingFrames);
+      lastLoudFrame = Math.min(endFrame, lastLoudFrame + paddingFrames);
+      
+      const startOffsetSeconds = (firstLoudFrame - startFrame) / rate;
+      const newDuration = (lastLoudFrame - firstLoudFrame) / rate;
+      
+      newTracks[trackIndex] = {
+        ...track,
+        startTime: track.startTime + startOffsetSeconds,
+        sourceStart: track.sourceStart + startOffsetSeconds,
+        duration: newDuration
+      };
+    });
     
     saveState(newTracks);
     
@@ -951,112 +962,125 @@ export function useAudioProcessor() {
   };
 
   const split = (time: number) => {
-    if (!selectedTrackId || !audioContextRef.current) return;
+    if (selectedTrackIds.length === 0 || !audioContextRef.current) return;
     
-    const trackIndex = tracks.findIndex(t => t.id === selectedTrackId);
-    if (trackIndex === -1 || tracks[trackIndex].locked) return;
-    
-    const track = tracks[trackIndex];
-    
-    // Check if split point is within track bounds
-    if (time <= track.startTime || time >= track.startTime + track.duration) return;
-    
-    const relativeSplitTime = time - track.startTime;
-    
-    const trackA: Track = updateOriginalBounds(
-        {
-            ...track,
-            id: Math.random().toString(36).substr(2, 9),
-            name: `${track.name} (Part 1)`
-        },
-        track.sourceStart,
-        relativeSplitTime
-    );
-    
-    const trackB: Track = updateOriginalBounds(
-        {
-            ...track,
-            id: Math.random().toString(36).substr(2, 9),
-            name: `${track.name} (Part 2)`,
-            startTime: time
-        },
-        track.sourceStart + relativeSplitTime,
-        track.duration - relativeSplitTime
-    );
-    
-    const newTracks = [...tracks];
-    newTracks.splice(trackIndex, 1, trackA, trackB);
+    let newTracks = [...tracks];
+    let newSelectedIds: string[] = [];
+
+    selectedTrackIds.forEach(id => {
+      const trackIndex = newTracks.findIndex(t => t.id === id);
+      if (trackIndex === -1 || newTracks[trackIndex].locked) return;
+      
+      const track = newTracks[trackIndex];
+      
+      // Check if split point is within track bounds
+      if (time <= track.startTime || time >= track.startTime + track.duration) {
+        newSelectedIds.push(track.id);
+        return;
+      }
+      
+      const relativeSplitTime = time - track.startTime;
+      
+      const trackA: Track = updateOriginalBounds(
+          {
+              ...track,
+              id: Math.random().toString(36).substr(2, 9),
+              name: `${track.name} (Part 1)`
+          },
+          track.sourceStart,
+          relativeSplitTime
+      );
+      
+      const trackB: Track = updateOriginalBounds(
+          {
+              ...track,
+              id: Math.random().toString(36).substr(2, 9),
+              name: `${track.name} (Part 2)`,
+              startTime: time
+          },
+          track.sourceStart + relativeSplitTime,
+          track.duration - relativeSplitTime
+      );
+      
+      newTracks.splice(trackIndex, 1, trackA, trackB);
+      newSelectedIds.push(trackB.id);
+    });
     
     saveState(newTracks);
-    setSelectedTrackId(trackB.id); // Select the second part
+    setSelectedTrackIds(newSelectedIds);
   };
   
   const deleteRegion = (start: number, end: number) => {
-    if (!selectedTrackId) return;
-    const trackIndex = tracks.findIndex(t => t.id === selectedTrackId);
-    if (trackIndex === -1 || tracks[trackIndex].locked) return;
+    if (selectedTrackIds.length === 0) return;
     
-    const track = tracks[trackIndex];
-    const regionStart = Math.min(start, end);
-    const regionEnd = Math.max(start, end);
-    
-    if (regionEnd <= track.startTime || regionStart >= track.startTime + track.duration) return;
-    
-    const overlapStart = Math.max(regionStart, track.startTime);
-    const overlapEnd = Math.min(regionEnd, track.startTime + track.duration);
-    
-    const newTracks = [...tracks];
-    
-    const EPSILON = 0.01;
-    
-    if (overlapStart > track.startTime + EPSILON && overlapEnd < track.startTime + track.duration - EPSILON) {
-      const trackA: Track = updateOriginalBounds(
-        {
-          ...track,
-          id: Math.random().toString(36).substr(2, 9),
-          name: `${track.name} (Part 1)`
-        },
-        track.sourceStart,
-        overlapStart - track.startTime
-      );
-      const trackB: Track = updateOriginalBounds(
-        {
-          ...track,
-          id: Math.random().toString(36).substr(2, 9),
-          name: `${track.name} (Part 2)`,
-          startTime: overlapStart // Snap to the end of trackA
-        },
-        track.sourceStart + (overlapEnd - track.startTime),
-        (track.startTime + track.duration) - overlapEnd
-      );
-      newTracks.splice(trackIndex, 1, trackA, trackB);
-      setSelectedTrackId(trackB.id);
-    } else if (overlapStart <= track.startTime + EPSILON && overlapEnd < track.startTime + track.duration - EPSILON) {
-      const trackB: Track = updateOriginalBounds(
-        {
-          ...track,
-          startTime: track.startTime // Snap to original start time
-        },
-        track.sourceStart + (overlapEnd - track.startTime),
-        (track.startTime + track.duration) - overlapEnd
-      );
-      newTracks.splice(trackIndex, 1, trackB);
-    } else if (overlapStart > track.startTime + EPSILON && overlapEnd >= track.startTime + track.duration - EPSILON) {
-      const trackA: Track = updateOriginalBounds(
-        {
-          ...track
-        },
-        track.sourceStart,
-        overlapStart - track.startTime
-      );
-      newTracks.splice(trackIndex, 1, trackA);
-    } else {
-      newTracks.splice(trackIndex, 1);
-      setSelectedTrackId(null);
-    }
+    let newTracks = [...tracks];
+    let newSelectedIds = [...selectedTrackIds];
+
+    selectedTrackIds.forEach(id => {
+      const trackIndex = newTracks.findIndex(t => t.id === id);
+      if (trackIndex === -1 || newTracks[trackIndex].locked) return;
+      
+      const track = newTracks[trackIndex];
+      const regionStart = Math.min(start, end);
+      const regionEnd = Math.max(start, end);
+      
+      if (regionEnd <= track.startTime || regionStart >= track.startTime + track.duration) return;
+      
+      const overlapStart = Math.max(regionStart, track.startTime);
+      const overlapEnd = Math.min(regionEnd, track.startTime + track.duration);
+      
+      const EPSILON = 0.01;
+      
+      if (overlapStart > track.startTime + EPSILON && overlapEnd < track.startTime + track.duration - EPSILON) {
+        const trackA: Track = updateOriginalBounds(
+          {
+            ...track,
+            id: Math.random().toString(36).substr(2, 9),
+            name: `${track.name} (Part 1)`
+          },
+          track.sourceStart,
+          overlapStart - track.startTime
+        );
+        const trackB: Track = updateOriginalBounds(
+          {
+            ...track,
+            id: Math.random().toString(36).substr(2, 9),
+            name: `${track.name} (Part 2)`,
+            startTime: overlapStart // Snap to the end of trackA
+          },
+          track.sourceStart + (overlapEnd - track.startTime),
+          (track.startTime + track.duration) - overlapEnd
+        );
+        newTracks.splice(trackIndex, 1, trackA, trackB);
+        newSelectedIds = newSelectedIds.map(sId => sId === id ? trackB.id : sId);
+      } else if (overlapStart <= track.startTime + EPSILON && overlapEnd < track.startTime + track.duration - EPSILON) {
+        const trackB: Track = updateOriginalBounds(
+          {
+            ...track,
+            startTime: track.startTime // Snap to original start time
+          },
+          track.sourceStart + (overlapEnd - track.startTime),
+          (track.startTime + track.duration) - overlapEnd
+        );
+        newTracks.splice(trackIndex, 1, trackB);
+      } else if (overlapStart > track.startTime + EPSILON && overlapEnd >= track.startTime + track.duration - EPSILON) {
+        const trackA: Track = updateOriginalBounds(
+          {
+            ...track
+          },
+          track.sourceStart,
+          overlapStart - track.startTime
+        );
+        newTracks.splice(trackIndex, 1, trackA);
+      } else {
+        newTracks.splice(trackIndex, 1);
+        newSelectedIds = newSelectedIds.filter(sId => sId !== id);
+      }
+    });
     
     setTracks(newTracks);
     saveState(newTracks);
+    setSelectedTrackIds(newSelectedIds);
     
     if (newTracks.length === 0) {
         setAudioState(s => ({ ...s, duration: 0, currentTime: 0 }));
@@ -1067,36 +1091,41 @@ export function useAudioProcessor() {
   };
 
   const trimRegion = (start: number, end: number) => {
-    if (!selectedTrackId) return;
-    const trackIndex = tracks.findIndex(t => t.id === selectedTrackId);
-    if (trackIndex === -1 || tracks[trackIndex].locked) return;
+    if (selectedTrackIds.length === 0) return;
     
-    const track = tracks[trackIndex];
-    const regionStart = Math.min(start, end);
-    const regionEnd = Math.max(start, end);
-    
-    const newTracks = [...tracks];
-    
-    if (regionEnd <= track.startTime || regionStart >= track.startTime + track.duration) {
-      newTracks.splice(trackIndex, 1);
-      setSelectedTrackId(null);
-    } else {
-      const overlapStart = Math.max(regionStart, track.startTime);
-      const overlapEnd = Math.min(regionEnd, track.startTime + track.duration);
+    let newTracks = [...tracks];
+    let newSelectedIds = [...selectedTrackIds];
+
+    selectedTrackIds.forEach(id => {
+      const trackIndex = newTracks.findIndex(t => t.id === id);
+      if (trackIndex === -1 || newTracks[trackIndex].locked) return;
       
-      const trimmedTrack: Track = updateOriginalBounds(
-        {
-          ...track,
-          startTime: overlapStart
-        },
-        track.sourceStart + (overlapStart - track.startTime),
-        overlapEnd - overlapStart
-      );
-      newTracks.splice(trackIndex, 1, trimmedTrack);
-    }
+      const track = newTracks[trackIndex];
+      const regionStart = Math.min(start, end);
+      const regionEnd = Math.max(start, end);
+      
+      if (regionEnd <= track.startTime || regionStart >= track.startTime + track.duration) {
+        newTracks.splice(trackIndex, 1);
+        newSelectedIds = newSelectedIds.filter(sId => sId !== id);
+      } else {
+        const overlapStart = Math.max(regionStart, track.startTime);
+        const overlapEnd = Math.min(regionEnd, track.startTime + track.duration);
+        
+        const trimmedTrack: Track = updateOriginalBounds(
+          {
+            ...track,
+            startTime: overlapStart
+          },
+          track.sourceStart + (overlapStart - track.startTime),
+          overlapEnd - overlapStart
+        );
+        newTracks.splice(trackIndex, 1, trimmedTrack);
+      }
+    });
     
     setTracks(newTracks);
     saveState(newTracks);
+    setSelectedTrackIds(newSelectedIds);
     
     if (newTracks.length === 0) {
         setAudioState(s => ({ ...s, duration: 0, currentTime: 0 }));
@@ -1120,7 +1149,7 @@ export function useAudioProcessor() {
 
     const newTracks = [...tracks, newTrack];
     saveState(newTracks);
-    setSelectedTrackId(newTrack.id);
+    setSelectedTrackIds([newTrack.id]);
     
     const maxDuration = Math.max(...newTracks.map(t => t.startTime + t.duration));
     setAudioState(s => ({ ...s, duration: maxDuration }));
@@ -1141,8 +1170,8 @@ export function useAudioProcessor() {
       
       saveState(newTracks);
       
-      if (selectedTrackId === id) {
-          setSelectedTrackId(null);
+      if (selectedTrackIds.includes(id)) {
+          setSelectedTrackIds(selectedTrackIds.filter(selectedId => selectedId !== id));
       }
   };
 
@@ -1343,7 +1372,7 @@ export function useAudioProcessor() {
     });
   };
 
-  const exportAudio = async (format: 'wav' | 'webm' | 'mp3' = 'wav', options: { applyEffects?: boolean, applyTimeStretch?: boolean } = { applyEffects: true, applyTimeStretch: true }): Promise<Blob> => {
+  const exportAudio = async (format: 'wav' | 'webm' | 'mp3' = 'wav', options: { applyEffects?: boolean, applyTimeStretch?: boolean, onProgress?: (p: number) => void } = { applyEffects: true, applyTimeStretch: true }): Promise<Blob> => {
     if (!audioContextRef.current || tracks.length === 0) throw new Error("No audio loaded");
 
     const playbackRate = audioState.playbackRate;
@@ -1356,6 +1385,19 @@ export function useAudioProcessor() {
       Math.ceil(duration * sampleRate),
       sampleRate
     );
+
+    // Add progress simulation for offline rendering
+    const step = Math.max(1, Math.floor(duration / 10));
+    for (let i = step; i < duration; i += step) {
+      offlineCtx.suspend(i).then(() => {
+        if (options.onProgress) {
+          // If time stretching is needed, rendering is 50% of the work. Otherwise 90% (leaving 10% for encoding).
+          const maxProgress = options.applyTimeStretch && Math.abs(playbackRate - 1.0) > 0.01 ? 0.5 : 0.9;
+          options.onProgress((i / duration) * maxProgress);
+        }
+        offlineCtx.resume();
+      });
+    }
 
     // Re-create graph for offline context
     const offlineMasterGain = offlineCtx.createGain();
@@ -1488,8 +1530,14 @@ export function useAudioProcessor() {
 
     // 2. Apply Time Stretching if needed (to change speed without pitch shift)
     if (options.applyTimeStretch && Math.abs(playbackRate - 1.0) > 0.01) {
-        renderedBuffer = await timeStretchBuffer(renderedBuffer, playbackRate);
+        renderedBuffer = await timeStretchBuffer(renderedBuffer, playbackRate, (p) => {
+          if (options.onProgress) {
+            options.onProgress(0.5 + p * 0.4); // 50% to 90%
+          }
+        });
     }
+
+    if (options.onProgress) options.onProgress(0.95); // Encoding phase
 
     // 3. Apply Normalization if enabled
     if (options.applyEffects && settings.normalize) {
@@ -1791,7 +1839,7 @@ export function useAudioProcessor() {
     });
     setHistory([[]]);
     setHistoryIndex(0);
-    setSelectedTrackId(null);
+    setSelectedTrackIds([]);
   };
 
   return {
@@ -1818,8 +1866,8 @@ export function useAudioProcessor() {
     addMarker,
     removeMarker,
     updateMarker,
-    selectedTrackId,
-    setSelectedTrackId,
+    selectedTrackIds,
+    setSelectedTrackIds,
     undo,
     redo,
     canUndo: historyIndex > 0,
@@ -1850,7 +1898,7 @@ export function useAudioProcessor() {
 }
 
 // Helper to time stretch AudioBuffer using soundtouchjs
-async function timeStretchBuffer(buffer: AudioBuffer, rate: number): Promise<AudioBuffer> {
+async function timeStretchBuffer(buffer: AudioBuffer, rate: number, onProgress?: (p: number) => void): Promise<AudioBuffer> {
   const sampleRate = buffer.sampleRate;
   const numChannels = buffer.numberOfChannels;
   
@@ -1887,10 +1935,18 @@ async function timeStretchBuffer(buffer: AudioBuffer, rate: number): Promise<Aud
   const samples = new Float32Array(bufferSize * 2);
   
   let framesExtracted = 0;
+  let totalFrames = 0;
+  let loops = 0;
   while ((framesExtracted = filter.extract(samples, bufferSize)) > 0) {
     for (let i = 0; i < framesExtracted; i++) {
       outputL.push(samples[i * 2]);
       outputR.push(samples[i * 2 + 1]);
+    }
+    totalFrames += framesExtracted;
+    loops++;
+    if (onProgress && loops % 10 === 0) {
+       onProgress(Math.min(1, totalFrames / (length / rate)));
+       await new Promise(r => setTimeout(r, 0)); // yield to main thread
     }
   }
   

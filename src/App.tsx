@@ -44,8 +44,8 @@ function App() {
     removeMarker,
     updateMarker,
     updateTrack,
-    selectedTrackId,
-    setSelectedTrackId,
+    selectedTrackIds,
+    setSelectedTrackIds,
     undo,
     redo,
     canUndo,
@@ -73,23 +73,24 @@ function App() {
   } = useAudioProcessor();
 
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [exportFormat, setExportFormat] = useState<'wav' | 'webm' | 'mp3'>('mp3');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [localTrackSpeed, setLocalTrackSpeed] = useState<number>(1);
   const [localTrackVolume, setLocalTrackVolume] = useState<number>(1);
 
-  const selectedTrack = tracks.find(t => t.id === selectedTrackId);
+  const selectedTrack = tracks.find(t => selectedTrackIds.includes(t.id));
 
   useEffect(() => {
-    if (selectedTrack) {
+    if (selectedTrack && selectedTrackIds.length === 1) {
       setLocalTrackSpeed(selectedTrack.stretchRate || 1);
       setLocalTrackVolume(selectedTrack.volume ?? 1);
     } else {
       setLocalTrackSpeed(1);
       setLocalTrackVolume(1);
     }
-  }, [selectedTrackId, selectedTrack?.stretchRate, selectedTrack?.volume]);
+  }, [selectedTrackIds, selectedTrack?.stretchRate, selectedTrack?.volume]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -116,11 +117,14 @@ function App() {
     if (!audioState.isReady || tracks.length === 0) return;
     
     setIsExporting(true);
+    setExportProgress(0);
     try {
       const blob = await exportAudio(exportFormat, {
         applyEffects: !audioState.isBypassed,
-        applyTimeStretch: audioState.playbackRate !== 1
+        applyTimeStretch: audioState.playbackRate !== 1,
+        onProgress: (p) => setExportProgress(p)
       });
+      setExportProgress(1);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -194,15 +198,18 @@ function App() {
         redo();
       } else if (e.code === 'KeyD' && cmdOrCtrl) {
         e.preventDefault();
-        if (selectedTrackId) {
-          duplicateTrack(selectedTrackId);
+        selectedTrackIds.forEach(id => duplicateTrack(id));
+      } else if (e.code === 'Delete' || e.code === 'Backspace') {
+        if (selectedTrackIds.length > 0) {
+          e.preventDefault();
+          selectedTrackIds.forEach(id => deleteTrack(id));
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [audioState.currentTime, audioState.isPlaying, addMarker, handleSplit, play, pause, undo, redo, duplicateTrack, selectedTrackId]);
+  }, [audioState.currentTime, audioState.isPlaying, addMarker, handleSplit, play, pause, undo, redo, duplicateTrack, selectedTrackIds]);
 
   const handleDeleteTrack = (id: string) => {
       deleteTrack(id);
@@ -359,14 +366,25 @@ function App() {
                     onTrackUpdate={updateTrack}
                     onTrackDragEnd={onTrackDragEnd}
                     onSeek={seek}
-                    selectedTrackId={selectedTrackId}
-                    onSelectTrack={setSelectedTrackId}
+                    selectedTrackIds={selectedTrackIds}
+                    onSelectTrack={(id, multi) => {
+                      if (!id) {
+                        setSelectedTrackIds([]);
+                        return;
+                      }
+                      if (multi) {
+                        setSelectedTrackIds(prev => 
+                          prev.includes(id) ? prev.filter(pId => pId !== id) : [...prev, id]
+                        );
+                      } else {
+                        setSelectedTrackIds([id]);
+                      }
+                    }}
                     onDuplicateTrack={duplicateTrack}
                     onAutoTrim={autoTrim}
                     onDeleteTrack={handleDeleteTrack}
                     onTrackReorder={setTracks}
-                    onSplitTrack={(id, time) => {
-                        setSelectedTrackId(id);
+                    onSplitTrack={(time) => {
                         split(time);
                     }}
                     onAddChannel={() => {
@@ -507,8 +525,10 @@ function App() {
                     </div>
                     
                     {/* Left Side: Track Controls */}
-                    <div className={`flex flex-col gap-2 flex-1 min-w-[200px] max-w-[400px] ${!selectedTrackId ? 'opacity-50 pointer-events-none' : ''}`}>
-                      <h4 className="text-sm font-bold text-orange-400 mb-1 text-center">שליטה ברצועה נבחרת</h4>
+                    <div className={`flex flex-col gap-2 flex-1 min-w-[200px] max-w-[400px] ${selectedTrackIds.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <h4 className="text-sm font-bold text-orange-400 mb-1 text-center">
+                        {selectedTrackIds.length > 1 ? `שליטה ב-${selectedTrackIds.length} רצועות נבחרות` : 'שליטה ברצועה נבחרת'}
+                      </h4>
                       {/* Track Speed */}
                       <div className="flex items-center gap-3 bg-zinc-800/50 p-2 px-4 rounded-lg border border-zinc-700/50">
                           <span className="text-xs font-bold text-zinc-500 whitespace-nowrap flex items-center gap-1">
@@ -523,14 +543,10 @@ function App() {
                               value={localTrackSpeed}
                               onChange={(e) => setLocalTrackSpeed(parseFloat(e.target.value))}
                               onMouseUp={() => {
-                                if (selectedTrackId) {
-                                  stretchTrack(selectedTrackId, localTrackSpeed);
-                                }
+                                selectedTrackIds.forEach(id => stretchTrack(id, localTrackSpeed));
                               }}
                               onTouchEnd={() => {
-                                if (selectedTrackId) {
-                                  stretchTrack(selectedTrackId, localTrackSpeed);
-                                }
+                                selectedTrackIds.forEach(id => stretchTrack(id, localTrackSpeed));
                               }}
                               className="w-full h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
                           />
@@ -540,7 +556,7 @@ function App() {
                               <button 
                                 onClick={() => {
                                   setLocalTrackSpeed(1);
-                                  if (selectedTrackId) stretchTrack(selectedTrackId, 1);
+                                  selectedTrackIds.forEach(id => stretchTrack(id, 1));
                                 }}
                                 className="text-blue-400 hover:text-blue-300 p-0.5 rounded-full hover:bg-blue-500/20 transition-colors"
                                 title="איפוס מהירות"
@@ -565,14 +581,10 @@ function App() {
                               value={localTrackVolume}
                               onChange={(e) => setLocalTrackVolume(parseFloat(e.target.value))}
                               onMouseUp={() => {
-                                if (selectedTrackId) {
-                                  updateTrack(selectedTrackId, { volume: localTrackVolume });
-                                }
+                                selectedTrackIds.forEach(id => updateTrack(id, { volume: localTrackVolume }));
                               }}
                               onTouchEnd={() => {
-                                if (selectedTrackId) {
-                                  updateTrack(selectedTrackId, { volume: localTrackVolume });
-                                }
+                                selectedTrackIds.forEach(id => updateTrack(id, { volume: localTrackVolume }));
                               }}
                               className="w-full h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-green-500 [&::-webkit-slider-thumb]:rounded-full"
                           />
@@ -582,7 +594,7 @@ function App() {
                               <button 
                                 onClick={() => {
                                   setLocalTrackVolume(1);
-                                  if (selectedTrackId) updateTrack(selectedTrackId, { volume: 1 });
+                                  selectedTrackIds.forEach(id => updateTrack(id, { volume: 1 }));
                                 }}
                                 className="text-green-400 hover:text-green-300 p-0.5 rounded-full hover:bg-green-500/20 transition-colors"
                                 title="איפוס עוצמה"
@@ -775,7 +787,7 @@ function App() {
                           defaultValue=""
                         >
                           <option value="" disabled>בחר קטע מקור...</option>
-                          {tracks.filter(t => t.id !== selectedTrackId).map(t => (
+                          {tracks.filter(t => !selectedTrackIds.includes(t.id)).map(t => (
                             <option key={t.id} value={t.id}>{t.name}</option>
                           ))}
                         </select>
@@ -783,12 +795,12 @@ function App() {
                           onClick={() => {
                             const selectEl = document.getElementById('reference-track-select') as HTMLSelectElement;
                             const refId = selectEl?.value;
-                            if (refId && selectedTrackId) {
-                              matchTrackStyle(selectedTrackId, refId);
+                            if (refId && selectedTrackIds.length > 0) {
+                              selectedTrackIds.forEach(id => matchTrackStyle(id, refId));
                               selectEl.value = ""; // Reset after applying
                             }
                           }}
-                          disabled={!selectedTrackId || tracks.length < 2 || audioState.isProcessing}
+                          disabled={selectedTrackIds.length === 0 || tracks.length < 2 || audioState.isProcessing}
                           className="bg-orange-500 hover:bg-orange-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-white px-4 py-2 rounded font-bold text-sm transition-colors flex items-center justify-center gap-2"
                         >
                           <Brush className="w-4 h-4" />
@@ -828,21 +840,29 @@ function App() {
                     onClick={handleExport}
                     disabled={!audioState.isReady || tracks.length === 0 || isExporting}
                     className={`
-                      w-full py-2.5 rounded font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2 transition-all
+                      w-full py-2.5 rounded font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-2 transition-all relative overflow-hidden
                       ${(!audioState.isReady || tracks.length === 0)
                         ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
                         : 'bg-white text-zinc-900 hover:bg-zinc-200 shadow-lg shadow-white/10'
                       }
                     `}
                   >
-                    {isExporting ? (
-                      <>מעבד...</>
-                    ) : (
-                      <>
-                        <Download className="w-4 h-4" />
-                        ייצוא לקובץ
-                      </>
+                    {isExporting && (
+                      <div 
+                        className="absolute left-0 top-0 bottom-0 bg-green-500/30 transition-all duration-200" 
+                        style={{ width: `${exportProgress * 100}%` }}
+                      />
                     )}
+                    <span className="relative z-10 flex items-center gap-2">
+                      {isExporting ? (
+                        <>מעבד... {Math.round(exportProgress * 100)}%</>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          ייצוא לקובץ
+                        </>
+                      )}
+                    </span>
                   </button>
                 </div>
 
