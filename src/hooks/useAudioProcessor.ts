@@ -1135,31 +1135,43 @@ export function useAudioProcessor() {
     }
   };
 
-  const duplicateTrack = (id: string) => {
-    const track = tracks.find(t => t.id === id);
-    if (!track) return;
+  const duplicateTracks = (ids: string[]) => {
+    let newTracks = [...tracks];
+    let newSelectedIds: string[] = [];
+    
+    ids.forEach(id => {
+      const track = tracks.find(t => t.id === id);
+      if (!track) return;
 
-    const newTrack: Track = {
-      ...track,
-      id: Math.random().toString(36).substr(2, 9),
-      name: `${track.name} (Copy)`,
-      startTime: track.startTime + track.duration,
-      locked: false
-    };
+      const newTrack: Track = {
+        ...track,
+        id: Math.random().toString(36).substr(2, 9),
+        name: `${track.name} (Copy)`,
+        startTime: track.startTime + track.duration,
+        locked: false
+      };
+      newTracks.push(newTrack);
+      newSelectedIds.push(newTrack.id);
+    });
 
-    const newTracks = [...tracks, newTrack];
+    if (newSelectedIds.length === 0) return;
+
     saveState(newTracks);
-    setSelectedTrackIds([newTrack.id]);
+    setSelectedTrackIds(newSelectedIds);
     
     const maxDuration = Math.max(...newTracks.map(t => t.startTime + t.duration));
     setAudioState(s => ({ ...s, duration: maxDuration }));
   };
 
-  const deleteTrack = (id: string) => {
-      const track = tracks.find(t => t.id === id);
-      if (!track || track.locked) return;
+  const deleteTracks = (ids: string[]) => {
+      const idsToDelete = ids.filter(id => {
+          const track = tracks.find(t => t.id === id);
+          return track && !track.locked;
+      });
+      
+      if (idsToDelete.length === 0) return;
 
-      const newTracks = tracks.filter(t => t.id !== id);
+      const newTracks = tracks.filter(t => !idsToDelete.includes(t.id));
       
       if (newTracks.length === 0) {
           setAudioState(s => ({ ...s, duration: 0, currentTime: 0 }));
@@ -1170,13 +1182,11 @@ export function useAudioProcessor() {
       
       saveState(newTracks);
       
-      if (selectedTrackIds.includes(id)) {
-          setSelectedTrackIds(selectedTrackIds.filter(selectedId => selectedId !== id));
-      }
+      setSelectedTrackIds(prev => prev.filter(id => !idsToDelete.includes(id)));
   };
 
-  const toggleLock = (id: string) => {
-    setTracks(prev => prev.map(t => t.id === id ? { ...t, locked: !t.locked } : t));
+  const toggleLock = (ids: string[]) => {
+    setTracks(prev => prev.map(t => ids.includes(t.id) ? { ...t, locked: !t.locked } : t));
   };
 
   // Load settings from local storage on mount
@@ -1882,8 +1892,8 @@ export function useAudioProcessor() {
     split,
     deleteRegion,
     trimRegion,
-    duplicateTrack,
-    deleteTrack,
+    duplicateTracks,
+    deleteTracks,
     setPlaybackRate,
     toggleBypass,
     toggleLock,

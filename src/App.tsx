@@ -58,8 +58,8 @@ function App() {
     split,
     deleteRegion,
     trimRegion,
-    duplicateTrack,
-    deleteTrack,
+    duplicateTracks,
+    deleteTracks,
     setPlaybackRate,
     toggleBypass,
     toggleLock,
@@ -198,21 +198,21 @@ function App() {
         redo();
       } else if (e.code === 'KeyD' && cmdOrCtrl) {
         e.preventDefault();
-        selectedTrackIds.forEach(id => duplicateTrack(id));
+        duplicateTracks(selectedTrackIds);
       } else if (e.code === 'Delete' || e.code === 'Backspace') {
         if (selectedTrackIds.length > 0) {
           e.preventDefault();
-          selectedTrackIds.forEach(id => deleteTrack(id));
+          deleteTracks(selectedTrackIds);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [audioState.currentTime, audioState.isPlaying, addMarker, handleSplit, play, pause, undo, redo, duplicateTrack, selectedTrackIds]);
+  }, [audioState.currentTime, audioState.isPlaying, addMarker, handleSplit, play, pause, undo, redo, duplicateTracks, deleteTracks, selectedTrackIds]);
 
-  const handleDeleteTrack = (id: string) => {
-      deleteTrack(id);
+  const handleDeleteTracks = (ids: string[]) => {
+      deleteTracks(ids);
   };
 
   return (
@@ -380,9 +380,9 @@ function App() {
                         setSelectedTrackIds([id]);
                       }
                     }}
-                    onDuplicateTrack={duplicateTrack}
+                    onDuplicateTracks={duplicateTracks}
                     onAutoTrim={autoTrim}
-                    onDeleteTrack={handleDeleteTrack}
+                    onDeleteTracks={handleDeleteTracks}
                     onTrackReorder={setTracks}
                     onSplitTrack={(time) => {
                         split(time);

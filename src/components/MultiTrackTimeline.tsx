@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Track, Channel, Marker } from '../hooks/useAudioProcessor';
-import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast, Brush, Eraser, Layers } from 'lucide-react';
+import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast, Brush, Eraser, Layers, GripVertical } from 'lucide-react';
 import { TrackWaveform } from './TrackWaveform';
 
 interface MultiTrackTimelineProps {
@@ -13,16 +13,16 @@ interface MultiTrackTimelineProps {
   onSeek: (time: number) => void;
   selectedTrackIds: string[];
   onSelectTrack: (id: string, multi?: boolean) => void;
-  onDuplicateTrack: (id: string) => void;
+  onDuplicateTracks: (ids: string[]) => void;
   onAutoTrim: () => void;
-  onDeleteTrack: (id: string) => void;
+  onDeleteTracks: (ids: string[]) => void;
   onTrackReorder: (newTracks: Track[]) => void;
   onSplitTrack: (time: number) => void;
   onAddChannel: () => void;
   onRemoveChannel: (channelId: string) => void;
   onUpdateChannel: (channelId: string, name: string) => void;
   onReorderChannels: (channels: Channel[]) => void;
-  onToggleLock: (id: string) => void;
+  onToggleLock: (ids: string[]) => void;
   onAddMarker: (time: number) => void;
   onRemoveMarker: (id: string) => void;
   onUpdateMarker: (id: string, updates: Partial<Marker>) => void;
@@ -42,9 +42,9 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   onSeek,
   selectedTrackIds,
   onSelectTrack,
-  onDuplicateTrack,
+  onDuplicateTracks,
   onAutoTrim,
-  onDeleteTrack,
+  onDeleteTracks,
   onTrackReorder,
   onSplitTrack,
   onAddChannel,
@@ -81,6 +81,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
   const [editMarkerLabel, setEditMarkerLabel] = useState('');
   const [isSnapping, setIsSnapping] = useState(true);
+  const [draggingChannelIndex, setDraggingChannelIndex] = useState<number | null>(null);
 
   const [editingTime, setEditingTime] = useState(false);
   const [timeInputValue, setTimeInputValue] = useState('');
@@ -89,6 +90,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
   const selectionStartRef = useRef<number | null>(null);
   const selectionEndRef = useRef<number | null>(null);
+  const hasDraggedRef = useRef(false);
 
   useEffect(() => {
     selectionStartRef.current = selectionStart;
@@ -107,9 +109,24 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent, track: Track) => {
     e.stopPropagation();
+    hasDraggedRef.current = false;
     
     const isMulti = e.ctrlKey || e.metaKey;
-    onSelectTrack(track.id, isMulti);
+    let newSelectedIds = [...selectedTrackIds];
+
+    if (isMulti) {
+      if (newSelectedIds.includes(track.id)) {
+        newSelectedIds = newSelectedIds.filter(id => id !== track.id);
+      } else {
+        newSelectedIds.push(track.id);
+      }
+      onSelectTrack(track.id, true);
+    } else {
+      if (!newSelectedIds.includes(track.id)) {
+        newSelectedIds = [track.id];
+        onSelectTrack(track.id, false);
+      }
+    }
     
     if (e.shiftKey) {
       if (!containerRef.current) return;
@@ -124,12 +141,8 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
       return;
     }
 
-    const selectedIds = isMulti 
-      ? (selectedTrackIds.includes(track.id) ? selectedTrackIds : [...selectedTrackIds, track.id])
-      : [track.id];
-      
     const initialStates: any = {};
-    selectedIds.forEach(id => {
+    newSelectedIds.forEach(id => {
       const t = tracks.find(tr => tr.id === id);
       if (t) {
         initialStates[id] = {
@@ -149,15 +162,27 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
 
   const handleTouchStart = (e: React.TouchEvent, track: Track) => {
     e.stopPropagation();
-    onSelectTrack(track.id, false);
+    hasDraggedRef.current = false;
+    
+    let newSelectedIds = [...selectedTrackIds];
+    if (!newSelectedIds.includes(track.id)) {
+      newSelectedIds = [track.id];
+      onSelectTrack(track.id, false);
+    }
     
     const touch = e.touches[0];
-    setDragInitialStates({
-      [track.id]: {
-        startTime: track.startTime,
-        channelIndex: channels.findIndex(c => c.id === track.channelId)
+    const initialStates: any = {};
+    newSelectedIds.forEach(id => {
+      const t = tracks.find(tr => tr.id === id);
+      if (t) {
+        initialStates[id] = {
+          startTime: t.startTime,
+          channelIndex: channels.findIndex(c => c.id === t.channelId)
+        };
       }
     });
+    setDragInitialStates(initialStates);
+    
     setDraggingTrackId(track.id);
     setDragStartX(touch.clientX);
     setDragStartY(touch.clientY);
@@ -168,6 +193,10 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   const handleMove = (e: MouseEvent | TouchEvent) => {
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+    if (Math.abs(clientX - dragStartX) > 3 || Math.abs(clientY - dragStartY) > 3) {
+      hasDraggedRef.current = true;
+    }
 
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -375,14 +404,14 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
           setSelectionEnd(null);
         } else if (selectedTrackIds.length > 0) {
           e.preventDefault();
-          if (onDeleteTrack) selectedTrackIds.forEach(id => onDeleteTrack(id));
+          if (onDeleteTracks) onDeleteTracks(selectedTrackIds);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectionStart, selectionEnd, selectedTrackIds, onDeleteRegion, onDeleteTrack]);
+  }, [selectionStart, selectionEnd, selectedTrackIds, onDeleteRegion, onDeleteTracks]);
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
@@ -413,6 +442,10 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
     // Only start selection if clicking on the background, the ruler, or holding Shift on a track
     if (isTrack && !e.shiftKey && !isRuler) return;
     
+    if (!e.shiftKey && !isRuler) {
+      onSelectTrack('', false);
+    }
+    
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const time = Math.max(0, x / pixelsPerSecond);
@@ -430,6 +463,10 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
     const isTrack = (e.target as HTMLElement).closest('.track-element');
     
     if (isTrack && !isRuler) return;
+    
+    if (!isRuler) {
+      onSelectTrack('', false);
+    }
     
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.touches[0].clientX - rect.left;
@@ -529,6 +566,31 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
     newChannels[index] = newChannels[index + direction];
     newChannels[index + direction] = temp;
     onReorderChannels(newChannels);
+  };
+
+  const handleChannelDragStart = (e: React.DragEvent, index: number) => {
+    setDraggingChannelIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleChannelDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleChannelDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggingChannelIndex === null || draggingChannelIndex === dropIndex) return;
+
+    const newChannels = [...channels];
+    const [movedChannel] = newChannels.splice(draggingChannelIndex, 1);
+    newChannels.splice(dropIndex, 0, movedChannel);
+    onReorderChannels(newChannels);
+    setDraggingChannelIndex(null);
+  };
+
+  const handleChannelDragEnd = () => {
+    setDraggingChannelIndex(null);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -676,9 +738,17 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
               <button onClick={onAddChannel} className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold" title="ערוץ חדש"><Plus className="w-3 h-3"/><Layers className="w-4 h-4"/></button>
             </div> {/* Ruler spacer */}
             {channels.map((channel, index) => (
-                <div key={channel.id} className="h-20 border-b border-zinc-800/50 flex flex-col justify-center px-2 relative group">
+                <div 
+                    key={channel.id} 
+                    className={`h-20 border-b border-zinc-800/50 flex flex-col justify-center px-2 relative group transition-colors ${draggingChannelIndex === index ? 'opacity-50 bg-zinc-800' : ''}`}
+                    draggable
+                    onDragStart={(e) => handleChannelDragStart(e, index)}
+                    onDragOver={handleChannelDragOver}
+                    onDrop={(e) => handleChannelDrop(e, index)}
+                    onDragEnd={handleChannelDragEnd}
+                >
                     {editingChannelId === channel.id ? (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 pl-4">
                             <input 
                                 autoFocus
                                 value={editChannelName}
@@ -694,7 +764,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                             <button onClick={() => { onUpdateChannel(channel.id, editChannelName); setEditingChannelId(null); }} className="text-green-500"><Check className="w-3 h-3"/></button>
                         </div>
                     ) : (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between pl-4">
                             <span className="text-xs font-bold text-zinc-300 truncate" title={channel.name}>{channel.name}</span>
                             <div className="hidden group-hover:flex items-center gap-1">
                                 <button onClick={() => { setEditingChannelId(channel.id); setEditChannelName(channel.name); }} className="text-zinc-500 hover:text-white"><Edit2 className="w-3 h-3"/></button>
@@ -702,7 +772,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                             </div>
                         </div>
                     )}
-                    <div className="flex gap-1 mt-1">
+                    <div className="flex gap-1 mt-1 pl-4">
                         <button 
                             className={`p-1 rounded hover:bg-zinc-700 transition-colors ${channel.muted ? 'text-red-400 bg-red-900/30' : 'text-zinc-500 hover:text-white'}`}
                             onClick={() => {
@@ -715,9 +785,8 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                             {channel.muted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
                         </button>
                     </div>
-                    <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => moveChannel(index, -1)} disabled={index === 0} className="text-zinc-600 hover:text-white disabled:opacity-30"><ChevronLeft className="w-3 h-3 rotate-90"/></button>
-                        <button onClick={() => moveChannel(index, 1)} disabled={index === channels.length - 1} className="text-zinc-600 hover:text-white disabled:opacity-30"><ChevronRight className="w-3 h-3 rotate-90"/></button>
+                    <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1">
+                        <GripVertical className="w-3 h-3 text-zinc-500" />
                     </div>
                 </div>
             ))}
@@ -859,7 +928,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                     style={{ top: `${channelIndex * 80 + 24}px`, left: `${leftPx}px`, width: `${widthPx}px` }}
                     >
                     <div 
-                        className={`absolute h-16 w-full rounded cursor-grab active:cursor-grabbing flex flex-col justify-between p-1 overflow-hidden transition-all duration-200 backdrop-blur-sm touch-none ${
+                        className={`absolute h-16 w-full rounded cursor-grab active:cursor-grabbing flex flex-col justify-between p-1 transition-all duration-200 backdrop-blur-sm touch-none ${
                         isSelected 
                           ? (isStretched ? 'bg-blue-900/60 border-2 border-orange-500 shadow-[0_4px_20px_rgba(249,115,22,0.2)]' : 'bg-zinc-800/90 border-2 border-orange-500 shadow-[0_4px_20px_rgba(249,115,22,0.2)]') 
                           : (isStretched ? 'bg-blue-900/30 hover:bg-blue-800/40 border border-blue-500/50' : 'bg-zinc-800/60 hover:bg-zinc-700/80 border border-zinc-700/50')
@@ -867,7 +936,13 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                         style={{ minWidth: '20px' }}
                         onMouseDown={(e) => handleMouseDown(e, track)}
                         onTouchStart={(e) => handleTouchStart(e, track)}
-                        onClick={(e) => { e.stopPropagation(); onSelectTrack(track.id, e.ctrlKey || e.metaKey); }}
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            if (hasDraggedRef.current) return;
+                            if (!e.ctrlKey && !e.metaKey && selectedTrackIds.length > 1) {
+                                onSelectTrack(track.id, false);
+                            }
+                        }}
                         title="גרור להזזה, החזק Shift וגרור לסימון קטע"
                     >
                         {isStretched && (
@@ -898,7 +973,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                             />
                         )}
 
-                        <div className="flex justify-between items-center z-10 relative">
+                        <div className="flex justify-between items-center z-10 relative" style={{ minWidth: isSelected ? '120px' : 'auto' }}>
                             <div className="flex items-center gap-1.5 bg-zinc-900/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
                                 <input 
                                     type="checkbox" 
@@ -908,6 +983,8 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                                         onSelectTrack(track.id, true);
                                     }}
                                     onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onTouchStart={(e) => e.stopPropagation()}
                                     className="w-3 h-3 cursor-pointer accent-orange-500"
                                     title="בחר רצועה (או השתמש ב-Ctrl+Click)"
                                 />
@@ -917,7 +994,16 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                             </div>
                             <div className="flex gap-1">
                                 <button 
-                                    onClick={(e) => { e.stopPropagation(); onToggleLock(track.id); }}
+                                    onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        if (isSelected) {
+                                            onToggleLock(selectedTrackIds);
+                                        } else {
+                                            onToggleLock([track.id]);
+                                        }
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onTouchStart={(e) => e.stopPropagation()}
                                     className="bg-zinc-900/50 hover:bg-zinc-700 text-white p-1 rounded shadow-sm transition-colors"
                                     title={track.locked ? "פתח נעילה" : "נעל רצועה"}
                                 >
@@ -928,20 +1014,24 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                                 <button 
                                     onClick={(e) => { 
                                     e.stopPropagation(); 
-                                    onDuplicateTrack(track.id); 
+                                    onDuplicateTracks(selectedTrackIds); 
                                     }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onTouchStart={(e) => e.stopPropagation()}
                                     className="bg-zinc-900/50 hover:bg-zinc-700 text-white p-1 rounded shadow-sm transition-colors"
-                                    title="שכפל רצועה"
+                                    title="שכפל רצועות מסומנות"
                                 >
                                     <Copy className="w-3 h-3" />
                                 </button>
                                 <button 
                                     onClick={(e) => { 
                                     e.stopPropagation(); 
-                                    onDeleteTrack(track.id); 
+                                    onDeleteTracks(selectedTrackIds); 
                                     }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onTouchStart={(e) => e.stopPropagation()}
                                     className="bg-zinc-900/50 hover:bg-red-500 text-white p-1 rounded shadow-sm transition-colors"
-                                    title="מחק רצועה"
+                                    title="מחק רצועות מסומנות"
                                 >
                                     <Trash2 className="w-3 h-3" />
                                 </button>
