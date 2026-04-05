@@ -1995,7 +1995,7 @@ async function timeStretchBuffer(buffer: AudioBuffer, rate: number, onProgress?:
 }
 
 // Helper to convert AudioBuffer to WAV Blob
-function bufferToWave(abuffer: AudioBuffer, len: number) {
+export function bufferToWave(abuffer: AudioBuffer, len: number) {
   let numOfChan = abuffer.numberOfChannels,
       length = len * numOfChan * 2 + 44,
       buffer = new ArrayBuffer(length),

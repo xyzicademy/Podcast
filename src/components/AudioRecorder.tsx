@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Square, Play, Pause, Trash2, Save } from 'lucide-react';
+import { bufferToWave } from '../hooks/useAudioProcessor';
 
 interface AudioRecorderProps {
   onSave: (file: File) => void;
@@ -15,9 +16,14 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [micGain, setMicGain] = useState(1);
   const [studioMode, setStudioMode] = useState(true);
+  const [recordFormat, setRecordFormat] = useState<'webm' | 'wav'>('wav');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const wavChunksRef = useRef<Float32Array[][]>([]);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const isRecordingRef = useRef(false);
+  const isPausedRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -181,6 +187,10 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   };
 
   const stopMonitoring = () => {
+    if (scriptProcessorRef.current) {
+      scriptProcessorRef.current.disconnect();
+      scriptProcessorRef.current = null;
+    }
     if (sourceStreamRef.current) {
       sourceStreamRef.current.getTracks().forEach(track => track.stop());
     }
@@ -233,36 +243,49 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
       
       source.connect(gainNode);
       gainNode.connect(analyser);
-      analyser.connect(destination);
 
-      const mediaRecorder = new MediaRecorder(destination.stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
+      if (recordFormat === 'wav') {
+        const bufferSize = 4096;
+        const scriptProcessor = audioCtx.createScriptProcessor(bufferSize, 2, 2);
+        scriptProcessorRef.current = scriptProcessor;
+        wavChunksRef.current = [];
+        isRecordingRef.current = true;
+        isPausedRef.current = false;
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
+        scriptProcessor.onaudioprocess = (e) => {
+          if (isRecordingRef.current && !isPausedRef.current) {
+            const left = new Float32Array(e.inputBuffer.getChannelData(0));
+            const right = new Float32Array(e.inputBuffer.getChannelData(1));
+            wavChunksRef.current.push([left, right]);
+          }
+        };
 
-      mediaRecorder.onstop = () => {
-        const mimeType = mediaRecorder.mimeType || (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4');
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        if (sourceStreamRef.current) {
-          sourceStreamRef.current.getTracks().forEach(track => track.stop());
-        }
-        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-          audioCtxRef.current.close();
-        }
-        if (animationFrameRef.current) {
-            cancelAnimationFrame(animationFrameRef.current);
-            animationFrameRef.current = null;
-        }
-      };
+        analyser.connect(scriptProcessor);
+        const dummyDestination = audioCtx.createMediaStreamDestination();
+        scriptProcessor.connect(dummyDestination);
+      } else {
+        analyser.connect(destination);
+        const mediaRecorder = new MediaRecorder(destination.stream);
+        mediaRecorderRef.current = mediaRecorder;
+        chunksRef.current = [];
 
-      mediaRecorder.start(100);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            chunksRef.current.push(e.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const mimeType = mediaRecorder.mimeType || (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4');
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          setAudioBlob(blob);
+          setAudioUrl(URL.createObjectURL(blob));
+          stopMonitoring();
+        };
+
+        mediaRecorder.start(100);
+      }
+
       setIsRecording(true);
       setIsMonitoring(false);
       setIsPaused(false);
@@ -289,7 +312,11 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   };
 
   const pauseRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+    if (recordFormat === 'wav') {
+      isPausedRef.current = true;
+      setIsPaused(true);
+      if (timerRef.current) clearInterval(timerRef.current);
+    } else if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.pause();
       setIsPaused(true);
       if (timerRef.current) clearInterval(timerRef.current);
@@ -297,7 +324,13 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   };
 
   const resumeRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+    if (recordFormat === 'wav') {
+      isPausedRef.current = false;
+      setIsPaused(false);
+      timerRef.current = window.setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
       mediaRecorderRef.current.resume();
       setIsPaused(false);
       timerRef.current = window.setInterval(() => {
@@ -307,7 +340,35 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (recordFormat === 'wav' && isRecordingRef.current) {
+      isRecordingRef.current = false;
+      
+      const audioCtx = audioCtxRef.current;
+      if (audioCtx && wavChunksRef.current.length > 0) {
+        const bufferSize = 4096;
+        const totalLength = wavChunksRef.current.length * bufferSize;
+        const audioBuffer = audioCtx.createBuffer(2, totalLength, audioCtx.sampleRate);
+        
+        const leftChannel = audioBuffer.getChannelData(0);
+        const rightChannel = audioBuffer.getChannelData(1);
+        
+        let offset = 0;
+        for (let i = 0; i < wavChunksRef.current.length; i++) {
+          leftChannel.set(wavChunksRef.current[i][0], offset);
+          rightChannel.set(wavChunksRef.current[i][1], offset);
+          offset += bufferSize;
+        }
+        
+        const wavBlob = bufferToWave(audioBuffer, totalLength);
+        setAudioBlob(wavBlob);
+        setAudioUrl(URL.createObjectURL(wavBlob));
+      }
+      
+      stopMonitoring();
+      setIsRecording(false);
+      setIsPaused(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+    } else if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       setIsPaused(false);
@@ -326,7 +387,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
 
   const saveRecording = () => {
     if (audioBlob) {
-      const extension = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+      const extension = recordFormat === 'wav' ? 'wav' : (audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm');
       const file = new File([audioBlob], `recording-${new Date().toISOString().slice(0,10)}.${extension}`, { type: audioBlob.type });
       onSave(file);
       deleteRecording(); // Reset after saving
@@ -371,6 +432,20 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
             onChange={(e) => setMicGain(parseFloat(e.target.value))}
             className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
           />
+          
+          <div className="flex items-center justify-between mt-2 bg-zinc-950/50 p-2 rounded-lg border border-zinc-800/50">
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-white">פורמט הקלטה (WAV)</span>
+              <span className="text-[9px] text-zinc-500">הקלטה ללא דחיסה לאיכות מקסימלית (מומלץ)</span>
+            </div>
+            <button 
+              onClick={() => setRecordFormat(recordFormat === 'wav' ? 'webm' : 'wav')}
+              disabled={isRecording || isMonitoring}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${recordFormat === 'wav' ? 'bg-orange-500' : 'bg-zinc-700'} ${(isRecording || isMonitoring) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${recordFormat === 'wav' ? '-translate-x-5' : '-translate-x-1'}`} />
+            </button>
+          </div>
           
           <div className="flex items-center justify-between mt-2 bg-zinc-950/50 p-2 rounded-lg border border-zinc-800/50">
             <div className="flex flex-col">
