@@ -14,6 +14,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [micGain, setMicGain] = useState(1);
+  const [studioMode, setStudioMode] = useState(true);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -139,13 +140,21 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   const startMonitoring = async () => {
     setErrorMsg(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
+      const constraints = {
+        audio: studioMode ? {
+          autoGainControl: false,
+          echoCancellation: false,
+          noiseSuppression: false,
+          channelCount: 2,
+          sampleRate: 48000,
+          sampleSize: 16
+        } : {
           autoGainControl: true,
           echoCancellation: true,
           noiseSuppression: true
-        } 
-      });
+        }
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       sourceStreamRef.current = stream;
       
       const audioCtx = new AudioContext();
@@ -192,13 +201,21 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
       let audioCtx = audioCtxRef.current;
       
       if (!isMonitoring || !stream || !audioCtx) {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
+        const constraints = {
+          audio: studioMode ? {
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppression: false,
+            channelCount: 2,
+            sampleRate: 48000,
+            sampleSize: 16
+          } : {
             autoGainControl: true,
             echoCancellation: true,
             noiseSuppression: true
-          } 
-        });
+          }
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         sourceStreamRef.current = stream;
         audioCtx = new AudioContext();
         audioCtxRef.current = audioCtx;
@@ -354,6 +371,26 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
             onChange={(e) => setMicGain(parseFloat(e.target.value))}
             className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
           />
+          
+          <div className="flex items-center justify-between mt-2 bg-zinc-950/50 p-2 rounded-lg border border-zinc-800/50">
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-white">מצב סטודיו (איכות מקצועית)</span>
+              <span className="text-[9px] text-zinc-500">מבטל סינון רעשים מובנה להקלטה נקייה ממיקרופון חיצוני</span>
+            </div>
+            <button 
+              onClick={() => {
+                setStudioMode(!studioMode);
+                if (isMonitoring && !isRecording) {
+                  stopMonitoring();
+                  // It will require user to click "Prepare" again, which is safer
+                }
+              }}
+              disabled={isRecording}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${studioMode ? 'bg-orange-500' : 'bg-zinc-700'} ${isRecording ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${studioMode ? '-translate-x-5' : '-translate-x-1'}`} />
+            </button>
+          </div>
           
           {(isRecording || isMonitoring) && (
             <div className="w-full mt-2">
