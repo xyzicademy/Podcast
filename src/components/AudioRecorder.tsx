@@ -21,7 +21,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const wavChunksRef = useRef<Float32Array[][]>([]);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
   const timerRef = useRef<number | null>(null);
@@ -187,9 +187,9 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   };
 
   const stopMonitoring = () => {
-    if (scriptProcessorRef.current) {
-      scriptProcessorRef.current.disconnect();
-      scriptProcessorRef.current = null;
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
     }
     if (sourceStreamRef.current) {
       sourceStreamRef.current.getTracks().forEach(track => track.stop());
@@ -245,24 +245,52 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
       gainNode.connect(analyser);
 
       if (recordFormat === 'wav') {
-        const bufferSize = 4096;
-        const scriptProcessor = audioCtx.createScriptProcessor(bufferSize, 2, 2);
-        scriptProcessorRef.current = scriptProcessor;
         wavChunksRef.current = [];
         isRecordingRef.current = true;
         isPausedRef.current = false;
 
-        scriptProcessor.onaudioprocess = (e) => {
-          if (isRecordingRef.current && !isPausedRef.current) {
-            const left = new Float32Array(e.inputBuffer.getChannelData(0));
-            const right = new Float32Array(e.inputBuffer.getChannelData(1));
-            wavChunksRef.current.push([left, right]);
+        // Create AudioWorklet code as a Blob URL
+        const workletCode = `
+          class RecorderWorkletProcessor extends AudioWorkletProcessor {
+            process(inputs, outputs, parameters) {
+              const input = inputs[0];
+              if (input && input.length > 0) {
+                const left = input[0];
+                const right = input.length > 1 ? input[1] : input[0];
+                
+                this.port.postMessage({
+                  left: new Float32Array(left),
+                  right: new Float32Array(right)
+                });
+              }
+              return true;
+            }
           }
-        };
-
-        analyser.connect(scriptProcessor);
-        const dummyDestination = audioCtx.createMediaStreamDestination();
-        scriptProcessor.connect(dummyDestination);
+          registerProcessor('recorder-worklet', RecorderWorkletProcessor);
+        `;
+        
+        const blob = new Blob([workletCode], { type: 'application/javascript' });
+        const workletUrl = URL.createObjectURL(blob);
+        
+        try {
+          await audioCtx.audioWorklet.addModule(workletUrl);
+          const workletNode = new AudioWorkletNode(audioCtx, 'recorder-worklet');
+          workletNodeRef.current = workletNode;
+          
+          workletNode.port.onmessage = (e) => {
+            if (isRecordingRef.current && !isPausedRef.current) {
+              wavChunksRef.current.push([e.data.left, e.data.right]);
+            }
+          };
+          
+          analyser.connect(workletNode);
+          const dummyDestination = audioCtx.createMediaStreamDestination();
+          workletNode.connect(dummyDestination);
+        } catch (e) {
+          console.error("AudioWorklet error:", e);
+          setErrorMsg("שגיאה בהפעלת מקליט WAV. נסה להשתמש בפורמט WEBM.");
+          return;
+        }
       } else {
         analyser.connect(destination);
         const mediaRecorder = new MediaRecorder(destination.stream);
@@ -345,8 +373,12 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
       
       const audioCtx = audioCtxRef.current;
       if (audioCtx && wavChunksRef.current.length > 0) {
-        const bufferSize = 4096;
-        const totalLength = wavChunksRef.current.length * bufferSize;
+        // Calculate total length
+        let totalLength = 0;
+        for (let i = 0; i < wavChunksRef.current.length; i++) {
+          totalLength += wavChunksRef.current[i][0].length;
+        }
+        
         const audioBuffer = audioCtx.createBuffer(2, totalLength, audioCtx.sampleRate);
         
         const leftChannel = audioBuffer.getChannelData(0);
@@ -354,9 +386,10 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
         
         let offset = 0;
         for (let i = 0; i < wavChunksRef.current.length; i++) {
+          const chunkLen = wavChunksRef.current[i][0].length;
           leftChannel.set(wavChunksRef.current[i][0], offset);
           rightChannel.set(wavChunksRef.current[i][1], offset);
-          offset += bufferSize;
+          offset += chunkLen;
         }
         
         const wavBlob = bufferToWave(audioBuffer, totalLength);
