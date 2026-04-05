@@ -141,9 +141,9 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
-          autoGainControl: false,
-          echoCancellation: false,
-          noiseSuppression: false
+          autoGainControl: true,
+          echoCancellation: true,
+          noiseSuppression: true
         } 
       });
       sourceStreamRef.current = stream;
@@ -194,9 +194,9 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
       if (!isMonitoring || !stream || !audioCtx) {
         stream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
-            autoGainControl: false,
-            echoCancellation: false,
-            noiseSuppression: false
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true
           } 
         });
         sourceStreamRef.current = stream;

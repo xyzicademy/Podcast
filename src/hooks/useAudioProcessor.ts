@@ -24,6 +24,7 @@ export interface Channel {
   id: string;
   name: string;
   muted?: boolean;
+  solo?: boolean;
 }
 
 export interface Marker {
@@ -84,6 +85,7 @@ export const calcEffects = (settings: AudioSettings) => {
   
   return {
     hpFreq: 20 + (settings.noiseReduction / 100) * 280, // 0 -> 20Hz (no effect), 100 -> 300Hz
+    lpFreq: 22000 - (settings.noiseReduction / 100) * 10000, // 0 -> 22000Hz, 100 -> 12000Hz
     lowGain: ((settings.warmth - 50) / 50) * 15, // 50 -> 0dB, 0 -> -15dB, 100 -> +15dB
     highGain: ((settings.clarity - 50) / 50) * 15, // 50 -> 0dB, 0 -> -15dB, 100 -> +15dB
     compThreshold: -10 - (settings.compression / 100) * 40, // 0 -> -10dB, 100 -> -50dB
@@ -350,6 +352,8 @@ export function useAudioProcessor() {
   const animationFrameRef = useRef<number | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const highPassFilterRef = useRef<BiquadFilterNode | null>(null);
+  const highPassFilter2Ref = useRef<BiquadFilterNode | null>(null);
+  const lowPassFilterRef = useRef<BiquadFilterNode | null>(null);
   const lowShelfFilterRef = useRef<BiquadFilterNode | null>(null);
   const highShelfFilterRef = useRef<BiquadFilterNode | null>(null);
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
@@ -382,6 +386,8 @@ export function useAudioProcessor() {
 
     // Create Master Processing Nodes
     highPassFilterRef.current = ctx.createBiquadFilter();
+    highPassFilter2Ref.current = ctx.createBiquadFilter();
+    lowPassFilterRef.current = ctx.createBiquadFilter();
     lowShelfFilterRef.current = ctx.createBiquadFilter();
     highShelfFilterRef.current = ctx.createBiquadFilter();
     compressorRef.current = ctx.createDynamicsCompressor();
@@ -403,6 +409,8 @@ export function useAudioProcessor() {
 
     // Initial Node Configuration
     highPassFilterRef.current.type = 'highpass';
+    highPassFilter2Ref.current.type = 'highpass';
+    lowPassFilterRef.current.type = 'lowpass';
     lowShelfFilterRef.current.type = 'lowshelf';
     lowShelfFilterRef.current.frequency.value = 200;
     highShelfFilterRef.current.type = 'highshelf';
@@ -438,6 +446,8 @@ export function useAudioProcessor() {
     
     // Permanently connect the effects chain
     highPassFilterRef.current
+      .connect(highPassFilter2Ref.current)
+      .connect(lowPassFilterRef.current)
       .connect(compressorRef.current)
       .connect(lowShelfFilterRef.current)
       .connect(highShelfFilterRef.current);
@@ -554,6 +564,12 @@ export function useAudioProcessor() {
 
     if (highPassFilterRef.current) {
       highPassFilterRef.current.frequency.setTargetAtTime(fx.hpFreq, now, 0.1);
+    }
+    if (highPassFilter2Ref.current) {
+      highPassFilter2Ref.current.frequency.setTargetAtTime(fx.hpFreq, now, 0.1);
+    }
+    if (lowPassFilterRef.current) {
+      lowPassFilterRef.current.frequency.setTargetAtTime(fx.lpFreq, now, 0.1);
     }
     if (lowShelfFilterRef.current) {
       lowShelfFilterRef.current.frequency.setTargetAtTime(fx.lowShelfFreq, now, 0.1);
@@ -1202,14 +1218,16 @@ export function useAudioProcessor() {
     }
   }, []);
 
-  const addMarker = (time: number, label: string = 'סמן חדש') => {
+  const addMarker = (time: number, label: string = 'סמן חדש', color: string = '#F97316') => {
+    const id = `marker-${Math.random().toString(36).substr(2, 9)}`;
     const newMarker: Marker = {
-      id: `marker-${Math.random().toString(36).substr(2, 9)}`,
+      id,
       time,
       label,
-      color: '#F97316' // Default orange
+      color
     };
     setMarkers(prev => [...prev, newMarker].sort((a, b) => a.time - b.time));
+    return id;
   };
 
   const removeMarker = (id: string) => {
@@ -1516,11 +1534,14 @@ export function useAudioProcessor() {
         offlineMasterGain.connect(offlineCtx.destination);
     }
 
+    const hasSoloChannels = channels.some(c => c.solo);
+
     // Schedule all tracks at 1.0x speed
     tracks.forEach(track => {
       if (track.muted) return;
       const channel = channels.find(c => c.id === track.channelId);
       if (channel?.muted) return;
+      if (hasSoloChannels && !channel?.solo) return;
       
       const source = offlineCtx.createBufferSource();
       source.buffer = track.buffer;

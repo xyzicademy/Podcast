@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Track, Channel, Marker } from '../hooks/useAudioProcessor';
-import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast, Brush, Eraser, Layers, GripVertical } from 'lucide-react';
+import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast, Brush, Eraser, Layers, GripVertical, Headphones } from 'lucide-react';
 import { TrackWaveform } from './TrackWaveform';
 
 interface MultiTrackTimelineProps {
@@ -23,7 +23,7 @@ interface MultiTrackTimelineProps {
   onUpdateChannel: (channelId: string, name: string) => void;
   onReorderChannels: (channels: Channel[]) => void;
   onToggleLock: (ids: string[]) => void;
-  onAddMarker: (time: number) => void;
+  onAddMarker: (time: number) => string | void;
   onRemoveMarker: (id: string) => void;
   onUpdateMarker: (id: string, updates: Partial<Marker>) => void;
   onTrackDragEnd?: () => void;
@@ -80,6 +80,17 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   const [editChannelName, setEditChannelName] = useState('');
   const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
   const [editMarkerLabel, setEditMarkerLabel] = useState('');
+  const [editMarkerColor, setEditMarkerColor] = useState('#F97316');
+
+  const MARKER_COLORS = [
+    '#F97316', // Orange (default)
+    '#EF4444', // Red
+    '#10B981', // Green
+    '#3B82F6', // Blue
+    '#8B5CF6', // Purple
+    '#EC4899', // Pink
+    '#EAB308', // Yellow
+  ];
   const [isSnapping, setIsSnapping] = useState(true);
   const [draggingChannelIndex, setDraggingChannelIndex] = useState<number | null>(null);
 
@@ -396,7 +407,15 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        const id = onAddMarker(currentTime);
+        if (typeof id === 'string') {
+          setEditingMarkerId(id);
+          setEditMarkerLabel('סמן חדש');
+          setEditMarkerColor('#F97316');
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectionStart !== null && selectionEnd !== null && Math.abs(selectionEnd - selectionStart) > 0.05 && selectedTrackIds.length > 0) {
           e.preventDefault();
           if (onDeleteRegion) onDeleteRegion(selectionStart, selectionEnd);
@@ -411,7 +430,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectionStart, selectionEnd, selectedTrackIds, onDeleteRegion, onDeleteTracks]);
+  }, [selectionStart, selectionEnd, selectedTrackIds, onDeleteRegion, onDeleteTracks, currentTime, onAddMarker]);
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
@@ -568,18 +587,26 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
     onReorderChannels(newChannels);
   };
 
+  const [dragOverChannelIndex, setDragOverChannelIndex] = useState<number | null>(null);
+
   const handleChannelDragStart = (e: React.DragEvent, index: number) => {
     setDraggingChannelIndex(index);
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleChannelDragOver = (e: React.DragEvent) => {
+  const handleChannelDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    setDragOverChannelIndex(index);
+  };
+
+  const handleChannelDragLeave = () => {
+    setDragOverChannelIndex(null);
   };
 
   const handleChannelDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
+    setDragOverChannelIndex(null);
     if (draggingChannelIndex === null || draggingChannelIndex === dropIndex) return;
 
     const newChannels = [...channels];
@@ -591,6 +618,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
 
   const handleChannelDragEnd = () => {
     setDraggingChannelIndex(null);
+    setDragOverChannelIndex(null);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -680,7 +708,14 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15"/></svg>
               מגנט
             </button>
-            <button onClick={() => onAddMarker(currentTime)} className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400 flex items-center gap-1 text-xs" title="הוסף סמן במיקום הנוכחי (M)"><MapPin className="w-3 h-3"/> סמן</button>
+            <button onClick={() => {
+              const id = onAddMarker(currentTime);
+              if (typeof id === 'string') {
+                setEditingMarkerId(id);
+                setEditMarkerLabel('סמן חדש');
+                setEditMarkerColor('#F97316');
+              }
+            }} className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400 flex items-center gap-1 text-xs" title="הוסף סמן במיקום הנוכחי (M)"><MapPin className="w-3 h-3"/> סמן</button>
             
             {selectionStart !== null && selectionEnd !== null && Math.abs(selectionEnd - selectionStart) > 0.05 && selectedTrackIds.length > 0 && (
               <>
@@ -738,14 +773,18 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
               <button onClick={onAddChannel} className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold" title="ערוץ חדש"><Plus className="w-3 h-3"/><Layers className="w-4 h-4"/></button>
             </div> {/* Ruler spacer */}
             {channels.map((channel, index) => (
-                <div 
-                    key={channel.id} 
-                    className={`h-20 border-b border-zinc-800/50 flex flex-col justify-center px-2 relative group transition-colors ${draggingChannelIndex === index ? 'opacity-50 bg-zinc-800' : ''}`}
-                    draggable
-                    onDragStart={(e) => handleChannelDragStart(e, index)}
-                    onDragOver={handleChannelDragOver}
-                    onDrop={(e) => handleChannelDrop(e, index)}
-                    onDragEnd={handleChannelDragEnd}
+                <div key={channel.id} className="relative">
+                    {dragOverChannelIndex === index && draggingChannelIndex !== null && draggingChannelIndex !== index && (
+                        <div className={`absolute left-0 right-0 h-1 bg-orange-500 z-50 ${draggingChannelIndex > index ? 'top-0' : 'bottom-0'}`}></div>
+                    )}
+                    <div 
+                        className={`h-20 border-b border-zinc-800/50 flex flex-col justify-center px-2 relative group transition-colors ${draggingChannelIndex === index ? 'opacity-50 bg-zinc-800' : ''}`}
+                        draggable
+                        onDragStart={(e) => handleChannelDragStart(e, index)}
+                        onDragOver={(e) => handleChannelDragOver(e, index)}
+                        onDragLeave={handleChannelDragLeave}
+                        onDrop={(e) => handleChannelDrop(e, index)}
+                        onDragEnd={handleChannelDragEnd}
                 >
                     {editingChannelId === channel.id ? (
                         <div className="flex items-center gap-1 pl-4">
@@ -784,10 +823,22 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                         >
                             {channel.muted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
                         </button>
+                        <button 
+                            className={`p-1 rounded hover:bg-zinc-700 transition-colors ${channel.solo ? 'text-yellow-400 bg-yellow-900/30' : 'text-zinc-500 hover:text-white'}`}
+                            onClick={() => {
+                                const newChannels = [...channels];
+                                newChannels[index].solo = !newChannels[index].solo;
+                                onReorderChannels(newChannels);
+                            }}
+                            title={channel.solo ? "Unsolo Channel" : "Solo Channel"}
+                        >
+                            <Headphones className="w-3 h-3" />
+                        </button>
                     </div>
                     <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing px-1">
                         <GripVertical className="w-3 h-3 text-zinc-500" />
                     </div>
+                </div>
                 </div>
             ))}
         </div>
@@ -827,12 +878,18 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                         e.stopPropagation();
                         setEditingMarkerId(marker.id);
                         setEditMarkerLabel(marker.label);
+                        setEditMarkerColor(marker.color || '#F97316');
                       }}
                       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onRemoveMarker(marker.id); }}
                     >
                       <MapPin className="w-2.5 h-2.5 text-white" />
                       {editingMarkerId === marker.id ? (
-                        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-zinc-800 p-1 rounded shadow-lg border border-zinc-700 z-50 pointer-events-auto">
+                        <div 
+                          className="absolute top-6 left-1/2 -translate-x-1/2 bg-zinc-800 p-2 rounded shadow-lg border border-zinc-700 z-50 pointer-events-auto flex flex-col gap-2"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                        >
                           <input
                             autoFocus
                             type="text"
@@ -843,18 +900,40 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                             onKeyDown={(e) => {
                               e.stopPropagation();
                               if (e.key === 'Enter') {
-                                onUpdateMarker(marker.id, { label: editMarkerLabel.trim() || marker.label });
+                                onUpdateMarker(marker.id, { label: editMarkerLabel.trim() || marker.label, color: editMarkerColor });
                                 setEditingMarkerId(null);
                               } else if (e.key === 'Escape') {
                                 setEditingMarkerId(null);
                               }
                             }}
-                            onBlur={() => {
-                              onUpdateMarker(marker.id, { label: editMarkerLabel.trim() || marker.label });
+                            className="bg-zinc-950 text-white text-[10px] px-1.5 py-1 rounded outline-none w-32 border border-zinc-700"
+                            placeholder="שם הסמן"
+                          />
+                          <div className="flex gap-1 justify-center">
+                            {MARKER_COLORS.map(color => (
+                              <button
+                                key={color}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditMarkerColor(color);
+                                  onUpdateMarker(marker.id, { color });
+                                }}
+                                className={`w-4 h-4 rounded-full border border-zinc-700 ${editMarkerColor === color ? 'ring-1 ring-white' : ''}`}
+                                style={{ backgroundColor: color }}
+                                title="בחר צבע"
+                              />
+                            ))}
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateMarker(marker.id, { label: editMarkerLabel.trim() || marker.label, color: editMarkerColor });
                               setEditingMarkerId(null);
                             }}
-                            className="bg-zinc-950 text-white text-[10px] px-1.5 py-0.5 rounded outline-none w-20"
-                          />
+                            className="bg-zinc-700 hover:bg-zinc-600 text-white text-[10px] py-0.5 rounded"
+                          >
+                            שמור
+                          </button>
                         </div>
                       ) : (
                         <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-zinc-800 text-white text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none shadow-lg border border-zinc-700">

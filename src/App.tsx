@@ -184,9 +184,6 @@ function App() {
         } else {
           play();
         }
-      } else if (e.code === 'KeyM') {
-        e.preventDefault();
-        addMarker(audioState.currentTime);
       } else if (e.code === 'KeyS' && !cmdOrCtrl) {
         e.preventDefault();
         handleSplit();
@@ -218,43 +215,86 @@ function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-orange-500/30" dir="rtl">
       {/* Header */}
-      <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+      <header className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-[100]">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center shadow-lg shadow-orange-500/20">
               <Mic className="w-5 h-5 text-white" />
             </div>
-            <h1 className="font-bold text-xl tracking-tight">Podcast Studio <span className="text-zinc-500 font-normal">Enhancer</span></h1>
+            <div className="flex flex-col">
+              <h1 className="font-bold text-xl tracking-tight leading-none">Podcast Studio <span className="text-zinc-500 font-normal">Enhancer</span></h1>
+              <span className="text-[10px] text-zinc-500 mt-0.5">By: XYZ I Cademy - Oshri Eitan</span>
+            </div>
           </div>
-          <div className="flex items-center gap-4 text-sm text-zinc-400">
+          
+          {tracks.length > 0 && (
+            <div className="flex items-center gap-1 bg-zinc-950/50 px-2 py-1 rounded-lg border border-zinc-800/50">
+              <button 
+                onClick={() => seek(0)} 
+                className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                title="חזור להתחלה"
+              >
+                <SkipBack className="w-3.5 h-3.5" />
+              </button>
+              <button 
+                onClick={() => seek(Math.max(0, audioState.currentTime - 5))} 
+                className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                title="אחורה 5 שניות"
+              >
+                <Rewind className="w-3.5 h-3.5" />
+              </button>
+              <button 
+                onClick={audioState.isPlaying ? pause : play} 
+                className="w-8 h-8 rounded-full bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center shadow-lg shadow-orange-500/20 transition-all hover:scale-105 active:scale-95 mx-1"
+                title={audioState.isPlaying ? "השהה (Space)" : "נגן (Space)"}
+              >
+                {audioState.isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+              </button>
+              <button 
+                onClick={() => seek(Math.min(audioState.duration, audioState.currentTime + 5))} 
+                className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                title="קדימה 5 שניות"
+              >
+                <FastForward className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-px h-5 bg-zinc-800 mx-1"></div>
+              <div className="font-mono text-xs text-orange-500 w-12 text-center">
+                {formatTime(audioState.currentTime)}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-4 text-xs text-zinc-400">
             <button 
               onClick={undo}
               disabled={!canUndo}
-              className="flex items-center gap-2 hover:text-white transition-colors disabled:opacity-50"
+              className="flex flex-col items-center gap-1 hover:text-white transition-colors disabled:opacity-50"
               title="בטל פעולה"
             >
               <Undo className="w-4 h-4" />
+              <span className="hidden sm:inline text-[10px]">בטל</span>
             </button>
             <button 
               onClick={redo}
               disabled={!canRedo}
-              className="flex items-center gap-2 hover:text-white transition-colors disabled:opacity-50"
+              className="flex flex-col items-center gap-1 hover:text-white transition-colors disabled:opacity-50"
               title="בצע שוב"
             >
               <Redo className="w-4 h-4" />
+              <span className="hidden sm:inline text-[10px]">שוב</span>
             </button>
-            <div className="w-px h-4 bg-zinc-800 mx-2"></div>
+            <div className="w-px h-6 bg-zinc-800 mx-1"></div>
             <button 
               onClick={saveProject}
-              className="flex items-center gap-2 hover:text-white transition-colors"
+              className="flex flex-col items-center gap-1 hover:text-white transition-colors"
               title="שמור הגדרות פרויקט"
             >
               <Save className="w-4 h-4" />
-              <span className="hidden sm:inline">שמור</span>
+              <span className="hidden sm:inline text-[10px]">שמור</span>
             </button>
-            <label className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer" title="טען הגדרות פרויקט">
+            <label className="flex flex-col items-center gap-1 hover:text-white transition-colors cursor-pointer" title="טען הגדרות פרויקט">
               <Upload className="w-4 h-4" />
-              <span className="hidden sm:inline">טען</span>
+              <span className="hidden sm:inline text-[10px]">טען</span>
               <input 
                 type="file" 
                 accept=".json" 
@@ -267,28 +307,28 @@ function App() {
                 className="hidden" 
               />
             </label>
-            <div className="w-px h-4 bg-zinc-800 mx-2"></div>
+            <div className="w-px h-6 bg-zinc-800 mx-1"></div>
             <button 
               onClick={() => setShowGuide(true)}
-              className="flex items-center gap-2 hover:text-white transition-colors text-orange-400 hover:text-orange-300"
+              className="flex flex-col items-center gap-1 hover:text-white transition-colors text-orange-400 hover:text-orange-300"
               title="מדריך למשתמש"
             >
               <HelpCircle className="w-4 h-4" />
-              <span className="hidden sm:inline">מדריך</span>
+              <span className="hidden sm:inline text-[10px]">מדריך</span>
             </button>
-            <div className="w-px h-4 bg-zinc-800 mx-2"></div>
+            <div className="w-px h-6 bg-zinc-800 mx-1"></div>
             <button 
               onClick={() => setShowResetConfirm(true)} 
-              className="flex items-center gap-2 hover:text-red-400 transition-colors text-zinc-400"
+              className="flex flex-col items-center gap-1 hover:text-red-400 transition-colors text-zinc-400"
               title="איפוס פרויקט"
             >
               <Trash2 className="w-4 h-4" />
-              <span className="hidden sm:inline">איפוס</span>
+              <span className="hidden sm:inline text-[10px]">איפוס</span>
             </button>
-            <div className="w-px h-4 bg-zinc-800 mx-2"></div>
-            <span className="flex items-center gap-2">
+            <div className="w-px h-6 bg-zinc-800 mx-1"></div>
+            <span className="flex flex-col items-center gap-1">
               <Activity className="w-4 h-4" />
-              עיבוד סאונד מתקדם
+              <span className="hidden sm:inline text-[10px]">עיבוד סאונד מתקדם</span>
             </span>
           </div>
         </div>
