@@ -19,6 +19,7 @@ interface MultiTrackTimelineProps {
   onTrackReorder: (newTracks: Track[]) => void;
   onSplitTrack: (time: number) => void;
   onAddChannel: () => void;
+  onClearAllChannels?: () => void;
   onRemoveChannel: (channelId: string) => void;
   onUpdateChannel: (channelId: string, name: string) => void;
   onReorderChannels: (channels: Channel[]) => void;
@@ -48,6 +49,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   onTrackReorder,
   onSplitTrack,
   onAddChannel,
+  onClearAllChannels,
   onRemoveChannel,
   onUpdateChannel,
   onReorderChannels,
@@ -113,6 +115,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
 
   const [isSelecting, setIsSelecting] = useState(false);
   const [dragInitialStates, setDragInitialStates] = useState<{ [id: string]: { startTime: number, channelIndex: number } }>({});
+  const [showClearChannelsConfirm, setShowClearChannelsConfirm] = useState(false);
 
   const timelineDuration = Math.max(duration, 10);
   const pixelsPerSecond = 50 * zoomLevel;
@@ -769,8 +772,19 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
       <div className="flex border border-zinc-800 rounded overflow-hidden bg-zinc-950">
         {/* Channels Header */}
         <div className="w-32 flex-shrink-0 border-r border-zinc-800 bg-zinc-900 z-10 flex flex-col">
-            <div className="h-6 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-center">
-              <button onClick={onAddChannel} className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold" title="ערוץ חדש"><Plus className="w-3 h-3"/><Layers className="w-4 h-4"/></button>
+            <div className="h-6 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-center gap-2">
+              <button onClick={onAddChannel} className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold" title="ערוץ חדש">
+                <Plus className="w-3 h-3"/><Layers className="w-4 h-4"/>
+              </button>
+              {onClearAllChannels && (
+                <button 
+                  onClick={() => setShowClearChannelsConfirm(true)} 
+                  className="text-zinc-500 hover:text-red-400 flex items-center justify-center transition-colors" 
+                  title="מחק את כל הערוצים"
+                >
+                  <Trash2 className="w-3.5 h-3.5"/>
+                </button>
+              )}
             </div> {/* Ruler spacer */}
             {channels.map((channel, index) => (
                 <div key={channel.id} className="relative">
@@ -1134,6 +1148,27 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
             </div>
         </div>
       </div>
+      {/* Clear Channels Confirmation Modal */}
+      {showClearChannelsConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">מחיקת כל הערוצים</h3>
+            <p className="text-zinc-400 mb-6">האם אתה בטוח שברצונך למחוק את כל הערוצים? כל רצועות האודיו שבהם יימחקו גם כן. ערוץ אחד ריק יישאר להמשך עבודה. פעולה זו אינה ניתנת לביטול.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowClearChannelsConfirm(false)} className="px-4 py-2 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors">ביטול</button>
+              <button 
+                onClick={() => { 
+                  if (onClearAllChannels) onClearAllChannels(); 
+                  setShowClearChannelsConfirm(false); 
+                }} 
+                className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors shadow-lg shadow-red-500/20"
+              >
+                מחק הכל
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

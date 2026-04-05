@@ -431,6 +431,10 @@ function App() {
                         const newId = `channel-${Math.random().toString(36).substr(2, 9)}`;
                         setChannels([...channels, { id: newId, name: `ערוץ ${channels.length + 1}` }]);
                     }}
+                    onClearAllChannels={() => {
+                        setTracks([]);
+                        setChannels([{ id: 'channel-0', name: 'ערוץ 1' }]);
+                    }}
                     onRemoveChannel={(channelId) => {
                         const newTracks = tracks.filter(t => t.channelId !== channelId);
                         setTracks(newTracks);
