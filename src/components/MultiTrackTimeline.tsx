@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Track, Channel, Marker } from '../hooks/useAudioProcessor';
-import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast, Brush, Eraser, Layers, GripVertical, Headphones } from 'lucide-react';
+import { Trash2, Split, Plus, Minus, Lock, Unlock, ZoomIn, ZoomOut, Maximize, ChevronLeft, ChevronRight, SkipBack, SkipForward, Edit2, Check, Copy, Volume2, VolumeX, Scissors, MapPin, Crop, Play, Pause, ChevronFirst, ChevronLast, Brush, Eraser, Layers, GripVertical, Headphones, Locate } from 'lucide-react';
 import { TrackWaveform } from './TrackWaveform';
 
 interface MultiTrackTimelineProps {
@@ -28,6 +28,7 @@ interface MultiTrackTimelineProps {
   onRemoveMarker: (id: string) => void;
   onUpdateMarker: (id: string, updates: Partial<Marker>) => void;
   onTrackDragEnd?: () => void;
+  onClearAllMarkers?: () => void;
   onDeleteRegion?: (start: number, end: number) => void;
   onTrimRegion?: (start: number, end: number) => void;
   isPlaying?: boolean;
@@ -59,6 +60,7 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   onRemoveMarker,
   onUpdateMarker,
   onTrackDragEnd,
+  onClearAllMarkers,
   onDeleteRegion,
   onTrimRegion,
   isPlaying = false,
@@ -120,6 +122,31 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
   const timelineDuration = Math.max(duration, 10);
   const pixelsPerSecond = 50 * zoomLevel;
   const timelineWidth = timelineDuration * pixelsPerSecond;
+
+  const scrollToPlayhead = () => {
+    if (scrollRef.current) {
+      const playheadX = currentTime * pixelsPerSecond;
+      const containerWidth = scrollRef.current.clientWidth;
+      scrollRef.current.scrollTo({
+        left: Math.max(0, playheadX - containerWidth / 2),
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isPlaying && scrollRef.current) {
+      const playheadX = currentTime * pixelsPerSecond;
+      const container = scrollRef.current;
+      const viewStart = container.scrollLeft;
+      const viewEnd = viewStart + container.clientWidth;
+
+      // Only auto-scroll if playhead is near the right edge or outside view bounds
+      if (playheadX > viewEnd - 100 || playheadX < viewStart) {
+        container.scrollLeft = Math.max(0, playheadX - container.clientWidth / 2);
+      }
+    }
+  }, [currentTime, isPlaying, pixelsPerSecond]);
 
   const handleMouseDown = (e: React.MouseEvent, track: Track) => {
     e.stopPropagation();
@@ -699,6 +726,10 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                     setZoomLevel(newZoom);
                   }
                 }} className="p-1 hover:bg-zinc-700 rounded text-zinc-400" title="התאם למסך"><Maximize className="w-4 h-4"/></button>
+                <div className="w-px h-4 bg-zinc-700 mx-1"></div>
+                <button onClick={scrollToPlayhead} className="p-1 hover:bg-zinc-700 rounded text-zinc-400 flex items-center justify-center relative" title="קפוץ למיקום סמן (Playhead)">
+                  <Locate className="w-4 h-4" />
+                </button>
             </div>
         </div>
 
@@ -719,6 +750,15 @@ export const MultiTrackTimeline: React.FC<MultiTrackTimelineProps> = ({
                 setEditMarkerColor('#F97316');
               }
             }} className="p-1.5 bg-zinc-800 rounded hover:bg-zinc-700 text-zinc-400 flex items-center gap-1 text-xs" title="הוסף סמן במיקום הנוכחי (M)"><MapPin className="w-3 h-3"/> סמן</button>
+            {onClearAllMarkers && markers.length > 0 && (
+              <button 
+                onClick={onClearAllMarkers} 
+                className="p-1.5 bg-zinc-800 rounded hover:bg-red-900/50 hover:text-red-400 text-zinc-400 flex items-center gap-1 text-xs transition-colors" 
+                title="מחק את כל הסמנים"
+              >
+                <Trash2 className="w-3 h-3"/>
+              </button>
+            )}
             
             {selectionStart !== null && selectionEnd !== null && Math.abs(selectionEnd - selectionStart) > 0.05 && selectedTrackIds.length > 0 && (
               <>

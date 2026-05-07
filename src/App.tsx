@@ -35,11 +35,15 @@ function App() {
     addTrack,
     saveProject,
     loadProject,
+    checkForBackup,
+    restoreBackup,
+    clearBackup,
     tracks,
     setTracks,
     channels,
     setChannels,
     markers,
+    setMarkers,
     addMarker,
     removeMarker,
     updateMarker,
@@ -79,6 +83,25 @@ function App() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [localTrackSpeed, setLocalTrackSpeed] = useState<number>(1);
   const [localTrackVolume, setLocalTrackVolume] = useState<number>(1);
+  const [showBackupPrompt, setShowBackupPrompt] = useState(false);
+
+  useEffect(() => {
+    checkForBackup().then(hasBackup => {
+      if (hasBackup && tracks.length === 0) {
+        setShowBackupPrompt(true);
+      }
+    });
+  }, []);
+
+  const handleRestoreBackup = async () => {
+    setShowBackupPrompt(false);
+    await restoreBackup();
+  };
+
+  const handleDiscardBackup = async () => {
+    setShowBackupPrompt(false);
+    await clearBackup();
+  };
 
   const selectedTrack = tracks.find(t => selectedTrackIds.includes(t.id));
 
@@ -214,6 +237,33 @@ function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-orange-500/30" dir="rtl">
+      {/* Backup Recovery Prompt */}
+      {showBackupPrompt && (
+        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-xl font-bold mb-2">גיבוי פרויקט נמצא</h3>
+            <p className="text-zinc-400 text-sm mb-6">
+              נראה שהמערכת נסגרה לאחרונה לפני שהספקת לשמור. מצאנו גיבוי אוטומטי של העבודה שלך. האם תרצה לשחזר אותה?
+            </p>
+            <div className="flex gap-3 justify-end mt-4">
+              <button 
+                onClick={handleDiscardBackup}
+                className="px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+              >
+                לא, התחל מחדש
+              </button>
+              <button 
+                onClick={handleRestoreBackup}
+                className="px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-2"
+              >
+                <SaveAll className="w-4 h-4" />
+                שחזר פרויקט
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-[100]">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -462,6 +512,7 @@ function App() {
                     markers={markers}
                     onAddMarker={addMarker}
                     onRemoveMarker={removeMarker}
+                    onClearAllMarkers={() => setMarkers([])}
                     onUpdateMarker={updateMarker}
                     onDeleteRegion={deleteRegion}
                     onTrimRegion={trimRegion}

@@ -20,6 +20,8 @@ if (typeof window !== 'undefined') {
   (window as any).GainAnalysis = GainAnalysis;
 }
 
+import { saveBackup, loadBackup, deleteBackup } from './backupStorage';
+
 export interface Channel {
   id: string;
   name: string;
@@ -1258,13 +1260,57 @@ export function useAudioProcessor() {
     return await ctx.decodeAudioData(arrayBuffer);
   };
 
+  const getSerializedProjectData = async () => {
+    const serializedTracks = await Promise.all(tracks.map(async t => {
+      const wavBlob = bufferToWave(t.buffer, t.buffer.length);
+      const arrayBuffer = await wavBlob.arrayBuffer();
+      return {
+        id: t.id,
+        name: t.name,
+        volume: t.volume,
+        muted: t.muted,
+        solo: t.solo,
+        pan: t.pan,
+        startTime: t.startTime,
+        channelId: t.channelId,
+        locked: t.locked,
+        sourceStart: t.sourceStart,
+        duration: t.duration,
+        audioData: arrayBuffer // Store raw ArrayBuffer for IndexedDB instead of base64
+      };
+    }));
+
+    return {
+      settings,
+      playbackRate: audioState.playbackRate,
+      markers,
+      channels,
+      tracks: serializedTracks,
+      timestamp: Date.now(),
+      version: 2
+    };
+  };
+
   const saveProject = async () => {
     setAudioState(prev => ({ ...prev, isProcessing: true }));
     try {
-      const serializedTracks = await Promise.all(tracks.map(async t => {
+      const parts: Blob[] = [];
+      const metadata = {
+        settings,
+        playbackRate: audioState.playbackRate,
+        markers,
+        channels,
+        timestamp: Date.now(),
+        version: 2
+      };
+      
+      parts.push(new Blob([JSON.stringify(metadata).slice(0, -1) + ',"tracks":['], { type: 'application/json' }));
+      
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks[i];
         const wavBlob = bufferToWave(t.buffer, t.buffer.length);
         const base64 = await blobToBase64(wavBlob);
-        return {
+        const trackObj = {
           id: t.id,
           name: t.name,
           volume: t.volume,
@@ -1278,30 +1324,97 @@ export function useAudioProcessor() {
           duration: t.duration,
           audioData: base64
         };
-      }));
-
-      const projectData = {
-        settings,
-        playbackRate: audioState.playbackRate,
-        markers,
-        channels,
-        tracks: serializedTracks,
-        timestamp: Date.now(),
-        version: 2
-      };
+        
+        parts.push(new Blob([JSON.stringify(trackObj)], { type: 'application/json' }));
+        if (i < tracks.length - 1) {
+          parts.push(new Blob([','], { type: 'application/json' }));
+        }
+      }
       
-      const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
+      parts.push(new Blob([']}'], { type: 'application/json' }));
+      const blob = new Blob(parts, { type: 'application/json' });
+      
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `podcast-project-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to save project", e);
-      console.error("Failed to save project", e);
+      alert("Failed to save project: " + (e.message || "Unknown error"));
     } finally {
       setAudioState(prev => ({ ...prev, isProcessing: false }));
+    }
+  };
+
+  const autoSaveProject = async () => {
+    // Only auto-save if we have something meaningful to save
+    if (tracks.length === 0) return;
+    try {
+      const projectData = await getSerializedProjectData();
+      await saveBackup('auto-saved-project', projectData);
+    } catch (e) {
+      console.warn("Auto-save failed", e);
+    }
+  };
+
+  const parseProjectData = async (data: any) => {
+    if (data.settings) {
+      setSettings(data.settings);
+      // Find matching preset
+      const match = presets.find(p => JSON.stringify(p.settings) === JSON.stringify(data.settings));
+      setCurrentPreset(match ? match.id : 'custom');
+    }
+    
+    if (data.playbackRate) {
+      setPlaybackRate(data.playbackRate);
+    }
+    
+    if (data.markers && Array.isArray(data.markers)) {
+      setMarkers(data.markers);
+    }
+
+    if (data.channels && Array.isArray(data.channels)) {
+      setChannels(data.channels);
+    }
+
+    if (data.tracks && Array.isArray(data.tracks)) {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioContextRef.current;
+      
+      const loadedTracks: Track[] = await Promise.all(data.tracks.map(async (t: any) => {
+        let buffer;
+        if (t.audioData instanceof ArrayBuffer) {
+          // Clone the array buffer because decodeAudioData detaches the arraybuffer
+          const clone = t.audioData.slice(0);
+          buffer = await ctx.decodeAudioData(clone);
+        } else {
+          buffer = await base64ToAudioBuffer(t.audioData, ctx);
+        }
+        return {
+          id: t.id,
+          name: t.name,
+          volume: t.volume,
+          muted: t.muted,
+          solo: t.solo,
+          pan: t.pan,
+          startTime: t.startTime,
+          channelId: t.channelId,
+          locked: t.locked,
+          sourceStart: t.sourceStart,
+          duration: t.duration,
+          buffer: buffer
+        };
+      }));
+      
+      setTracks(loadedTracks);
+      if (loadedTracks.length > 0) {
+        const maxDuration = Math.max(...loadedTracks.map(t => t.startTime + t.duration));
+        setAudioState(prev => ({ ...prev, duration: maxDuration, isReady: true }));
+      }
     }
   };
 
@@ -1310,63 +1423,38 @@ export function useAudioProcessor() {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      
-      if (data.settings) {
-        setSettings(data.settings);
-        // Find matching preset
-        const match = presets.find(p => JSON.stringify(p.settings) === JSON.stringify(data.settings));
-        setCurrentPreset(match ? match.id : 'custom');
-      }
-      
-      if (data.playbackRate) {
-        setPlaybackRate(data.playbackRate);
-      }
-      
-      if (data.markers && Array.isArray(data.markers)) {
-        setMarkers(data.markers);
-      }
-
-      if (data.channels && Array.isArray(data.channels)) {
-        setChannels(data.channels);
-      }
-
-      if (data.tracks && Array.isArray(data.tracks)) {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        const ctx = audioContextRef.current;
-        
-        const loadedTracks: Track[] = await Promise.all(data.tracks.map(async (t: any) => {
-          const buffer = await base64ToAudioBuffer(t.audioData, ctx);
-          return {
-            id: t.id,
-            name: t.name,
-            volume: t.volume,
-            muted: t.muted,
-            solo: t.solo,
-            pan: t.pan,
-            startTime: t.startTime,
-            channelId: t.channelId,
-            locked: t.locked,
-            sourceStart: t.sourceStart,
-            duration: t.duration,
-            buffer: buffer
-          };
-        }));
-        
-        setTracks(loadedTracks);
-        if (loadedTracks.length > 0) {
-          const maxDuration = Math.max(...loadedTracks.map(t => t.startTime + t.duration));
-          setAudioState(prev => ({ ...prev, duration: maxDuration, isReady: true }));
-        }
-      }
-      
+      await parseProjectData(data);
     } catch (e) {
       console.error("Failed to load project", e);
       console.error("Failed to load project file", e);
     } finally {
       setAudioState(prev => ({ ...prev, isProcessing: false }));
     }
+  };
+
+  const checkForBackup = async () => {
+    try {
+      const backup = await loadBackup('auto-saved-project');
+      return !!backup;
+    } catch {
+      return false;
+    }
+  };
+
+  const restoreBackup = async () => {
+    setAudioState(prev => ({ ...prev, isProcessing: true }));
+    try {
+      const data = await loadBackup('auto-saved-project');
+      if (data) {
+        await parseProjectData(data);
+        return true;
+      }
+    } catch (e) {
+      console.error("Failed to restore backup", e);
+    } finally {
+      setAudioState(prev => ({ ...prev, isProcessing: false }));
+    }
+    return false;
   };
 
   const updateTrack = (id: string, updates: Partial<Track>) => {
@@ -1854,6 +1942,27 @@ export function useAudioProcessor() {
     }
   };
 
+  const clearBackup = async () => {
+    try {
+      await deleteBackup('auto-saved-project');
+    } catch (e) {
+      console.warn("Failed to clear backup", e);
+    }
+  };
+
+  // Auto-save periodically
+  const autoSaveRef = useRef(autoSaveProject);
+  useEffect(() => {
+    autoSaveRef.current = autoSaveProject;
+  }, [autoSaveProject]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      autoSaveRef.current();
+    }, 60000); // 1 minute
+    return () => clearInterval(interval);
+  }, []);
+
   const resetProject = () => {
     stop();
     setTracks([]);
@@ -1871,6 +1980,7 @@ export function useAudioProcessor() {
     setHistory([[]]);
     setHistoryIndex(0);
     setSelectedTrackIds([]);
+    clearBackup();
   };
 
   return {
@@ -1888,6 +1998,9 @@ export function useAudioProcessor() {
     updateTrack,
     saveProject,
     loadProject,
+    checkForBackup,
+    restoreBackup,
+    clearBackup,
     tracks,
     setTracks,
     channels,

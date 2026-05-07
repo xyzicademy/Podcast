@@ -28,6 +28,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
   const gainNodeRef = useRef<GainNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceStreamRef = useRef<MediaStream | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,9 +149,9 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
     try {
       const constraints = {
         audio: studioMode ? {
-          autoGainControl: false,
-          echoCancellation: false,
-          noiseSuppression: false,
+          autoGainControl: true,
+          echoCancellation: true,
+          noiseSuppression: true,
           channelCount: 2,
           sampleRate: 48000,
           sampleSize: 16
@@ -167,6 +168,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
       audioCtxRef.current = audioCtx;
       
       const source = audioCtx.createMediaStreamSource(stream);
+      sourceNodeRef.current = source;
       const gainNode = audioCtx.createGain();
       gainNode.gain.value = micGain;
       gainNodeRef.current = gainNode;
@@ -213,9 +215,9 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
       if (!isMonitoring || !stream || !audioCtx) {
         const constraints = {
           audio: studioMode ? {
-            autoGainControl: false,
-            echoCancellation: false,
-            noiseSuppression: false,
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true,
             channelCount: 2,
             sampleRate: 48000,
             sampleSize: 16
@@ -231,7 +233,15 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
         audioCtxRef.current = audioCtx;
       }
 
-      const source = audioCtx.createMediaStreamSource(stream);
+      let source;
+      if (isMonitoring && sourceNodeRef.current) {
+        source = sourceNodeRef.current;
+        if (gainNodeRef.current) source.disconnect(gainNodeRef.current);
+      } else {
+        source = audioCtx.createMediaStreamSource(stream);
+        sourceNodeRef.current = source;
+      }
+      
       const gainNode = audioCtx.createGain();
       gainNode.gain.value = micGain;
       gainNodeRef.current = gainNode;
@@ -252,16 +262,32 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
         // Create AudioWorklet code as a Blob URL
         const workletCode = `
           class RecorderWorkletProcessor extends AudioWorkletProcessor {
+            constructor() {
+              super();
+              this.bufferSize = 4096;
+              this.leftBuffer = new Float32Array(this.bufferSize);
+              this.rightBuffer = new Float32Array(this.bufferSize);
+              this.offset = 0;
+            }
             process(inputs, outputs, parameters) {
               const input = inputs[0];
               if (input && input.length > 0) {
                 const left = input[0];
                 const right = input.length > 1 ? input[1] : input[0];
                 
-                this.port.postMessage({
-                  left: new Float32Array(left),
-                  right: new Float32Array(right)
-                });
+                for (let i = 0; i < left.length; i++) {
+                  this.leftBuffer[this.offset] = left[i];
+                  this.rightBuffer[this.offset] = right[i];
+                  this.offset++;
+                  
+                  if (this.offset >= this.bufferSize) {
+                    this.port.postMessage({
+                      left: new Float32Array(this.leftBuffer),
+                      right: new Float32Array(this.rightBuffer)
+                    });
+                    this.offset = 0;
+                  }
+                }
               }
               return true;
             }
@@ -284,8 +310,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
           };
           
           analyser.connect(workletNode);
-          const dummyDestination = audioCtx.createMediaStreamDestination();
-          workletNode.connect(dummyDestination);
         } catch (e) {
           console.error("AudioWorklet error:", e);
           setErrorMsg("שגיאה בהפעלת מקליט WAV. נסה להשתמש בפורמט WEBM.");
@@ -482,8 +506,8 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
           
           <div className="flex items-center justify-between mt-2 bg-zinc-950/50 p-2 rounded-lg border border-zinc-800/50">
             <div className="flex flex-col">
-              <span className="text-xs font-bold text-white">מצב סטודיו (איכות מקצועית)</span>
-              <span className="text-[9px] text-zinc-500">מבטל סינון רעשים מובנה להקלטה נקייה ממיקרופון חיצוני</span>
+              <span className="text-xs font-bold text-white">מצב סטודיו (WAV 48kHz)</span>
+              <span className="text-[9px] text-zinc-500">איכות אולפנית ללא דחיסה, כולל סינון רעשים מתקדם להקלטה נקייה</span>
             </div>
             <button 
               onClick={() => {
